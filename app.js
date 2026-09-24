@@ -248,3 +248,50 @@ setInterval(()=>{if(!document.hidden)refreshEpisodes(true);},30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshEpisodes(true);});
 setInterval(tickCountdown,1000);
 setView(currentView(),false);renderLibrary();renderManage();refreshEpisodes();
+
+// One welcome per tab visit. Navigation and the admin login stay immediate.
+(() => {
+  const intro = document.querySelector('#heart-intro');
+  let seen = false;
+  try { seen = sessionStorage.getItem('heart-welcome-v2') === 'seen'; } catch {}
+  if (seen || location.hash === '#studio' || typeof intro.showModal !== 'function') return;
+  let started = false, done = false, context, exitTimer;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const finish = () => {
+    if (done) return;
+    done = true; clearTimeout(exitTimer);
+    try { sessionStorage.setItem('heart-welcome-v2', 'seen'); } catch {}
+    if (context) context.close().catch(() => {});
+    intro.classList.add('leaving');
+    setTimeout(() => { intro.close(); document.body.style.overflow = ''; (document.querySelector(location.hash === '#folgen' ? '#library-nav' : '#hero-play')).focus({preventScroll:true}); }, reduced ? 0 : 750);
+  };
+  document.querySelector('#intro-start').onclick = () => {
+    if (started) return;
+    started = true; intro.classList.add('beating');
+    document.querySelector('#intro-caption').textContent = 'Meine Stimme. Ganz nah bei dir.';
+    document.querySelector('#intro-skip').textContent = 'Direkt zur Seite →';
+    exitTimer = setTimeout(finish, reduced ? 1100 : 2850);
+    try {
+      const AudioEngine = window.AudioContext || window.webkitAudioContext;
+      if (!AudioEngine) return;
+      context = new AudioEngine();
+      context.resume().then(() => {
+        if (done || context.state !== 'running') return;
+        const now = context.currentTime;
+        for (let beat = 0; beat < (reduced ? 1 : 3); beat++) {
+          for (const [offset, loudness] of [[0,.20],[.19,.12]]) {
+            const t = now + beat * .9 + offset;
+            const tone = context.createOscillator(), volume = context.createGain();
+            tone.type = 'sine'; tone.frequency.setValueAtTime(88,t); tone.frequency.exponentialRampToValueAtTime(42,t+.18);
+            volume.gain.setValueAtTime(.0001,t); volume.gain.exponentialRampToValueAtTime(loudness,t+.018); volume.gain.exponentialRampToValueAtTime(.0001,t+.24);
+            tone.connect(volume); volume.connect(context.destination); tone.start(t); tone.stop(t+.26);
+          }
+        }
+      }).catch(() => {});
+    } catch { /* The visual welcome also works without audio support. */ }
+  };
+  document.querySelector('#intro-skip').onclick = finish;
+  intro.addEventListener('cancel', event => { event.preventDefault(); finish(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && started) finish(); });
+  intro.showModal(); document.body.style.overflow = 'hidden';
+})();

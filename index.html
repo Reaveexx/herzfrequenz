@@ -8,19 +8,26 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Herzfrequenz · Geschichten für dich</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./style.css?v=20260924">
-  <script src="./config.js?v=20260924" defer></script>
+  <link rel="stylesheet" href="./style.css?v=20260924-heart2">
+  <script src="./config.js?v=20260924-heart2" defer></script>
   <script src="./qrcode.js" defer></script>
-  <script src="./app.js?v=20260924" defer></script>
+  <script src="./app.js?v=20260924-heart2" defer></script>
 </head>
 <body>
+  <dialog id="heart-intro" class="heart-intro" aria-labelledby="intro-title">
+    <div class="intro-inner"><p class="eyebrow">FÜR DICH. VON HERZEN.</p>
+      <button id="intro-start" class="intro-heart" aria-label="Mit Herzschlag-Sound öffnen"><svg viewBox="0 0 100 100" aria-hidden="true"><path d="M50 88C38 77 8 57 8 32C8 8 38 5 50 26C62 5 92 8 92 32C92 57 62 77 50 88Z"/></svg></button>
+      <h2 id="intro-title">Ein Herzschlag näher.</h2><p id="intro-caption">Berühre das Herz.<br>Deine kleine Auszeit beginnt mit einem Klang.</p>
+      <button id="intro-skip" class="text-button">Ohne Ton zur Seite →</button>
+    </div>
+  </dialog>
   <a class="skip" href="#main">Zum Inhalt</a>
   <section id="hero" class="hero" aria-labelledby="hero-title">
-    <div class="hero-content"><div class="hero-wordmark"><img src="./merit-hero.png" alt="Herzfrequenz" width="1200" height="628" fetchpriority="high"></div>
-      <h1 id="hero-title">Meine Stimme dein <span style="white-space:nowrap">Lieblings Ort</span></h1><p class="hero-subtitle">jede Woche neue Folge!</p>
+    <div class="hero-content"><div class="hero-wordmark"><img src="./merit-hero-02.png" alt="Herzfrequenz" width="1200" height="628" fetchpriority="high"></div>
+      <h1 id="hero-title">Meine Stimme dein <span style="white-space:nowrap">Lieblings Ort</span></h1><p class="hero-subtitle">jede Woche eine neue Folge!</p>
       <button id="hero-play" class="hero-play">Play<span class="sr-only"> – Zur Folgenübersicht</span></button>
     </div>
-    <div class="hero-photos"><img src="./merit-hero.png" alt="Unsere gemeinsamen Erinnerungen" width="1200" height="628"></div>
+    <div class="hero-photos"><img src="./merit-hero-02.png" alt="Unsere gemeinsamen Erinnerungen" width="1200" height="628"></div>
   </section>
   <header class="header wrap" hidden>
     <a class="brand" href="#" aria-label="Herzfrequenz – Startseite"><span>Herzfre<span class="brand-red">quenz</span><small>MEINE STIMME. FÜR DICH.</small></span></a>
