@@ -4,11 +4,15 @@ const config = window.HEART_CONFIG || {};
 const configured = Boolean(config.supabaseUrl && config.supabaseAnonKey);
 const base = (config.supabaseUrl || '').replace(/\/$/, '');
 let session = null, admin = false, episodes = [], editingId = null, selectedFile = null;
+let localStudioPreview = false;
+let serverBaseline = Date.now(), monotonicBaseline = performance.now(), releaseRefreshAt = 0;
+const serverNow = () => serverBaseline + performance.now() - monotonicBaseline;
+const isReleased = e => e.available !== undefined ? e.available : e.status === 'published' && new Date(e.release_at).getTime() <= serverNow();
 let previewUrl = null, currentEpisode = null, deletingId = null, saving = false, toastTimer;
 const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const displayDate = (date) => new Intl.DateTimeFormat('de-DE', {dateStyle:'medium',timeStyle:'short'}).format(new Date(date));
 const durationText = (value) => value ? `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2,'0')} Min.` : 'Hörspiel';
-const statusOf = e => e.status === 'draft' ? 'Entwurf' : new Date(e.release_at) > new Date() ? 'Geplant' : 'Veröffentlicht';
+const statusOf = e => e.status === 'draft' ? 'Entwurf' : new Date(e.release_at).getTime() > serverNow() ? 'Geplant' : 'Veröffentlicht';
 function message(text, error = false) { $('#form-message').textContent = text; $('#form-message').classList.toggle('error',error); }
 function toast(text) { clearTimeout(toastTimer); $('#toast').textContent=text; $('#toast').hidden=false; toastTimer=setTimeout(()=>$('#toast').hidden=true,4500); }
 async function request(path, {method='GET', body, token, headers={}}={}) {
@@ -23,20 +27,49 @@ async function request(path, {method='GET', body, token, headers={}}={}) {
   }
   return data;
 }
-function setView(studio, updateHash=true) {
-  $('#library').hidden=studio; $('#studio').hidden=!studio;
-  $('#library-nav').classList.toggle('active',!studio); $('#studio-nav').classList.toggle('active',studio);
-  $('#library-nav').setAttribute('aria-current',studio?'false':'page'); $('#studio-nav').setAttribute('aria-current',studio?'page':'false');
-  if(updateHash) history.replaceState(null,'',studio?'#studio':location.pathname+location.search);
-  $('#setup-note').hidden=configured; $('#login-form').hidden=!configured || admin;
-  $('#editor-area').hidden=configured&&!admin; $('#logout').hidden=!admin;
-  if(studio && admin) refreshEpisodes();
+function setView(view, updateHash=true) {
+  if(typeof view === 'boolean')view = view ? 'studio' : 'library';
+  const studio = view === 'studio', home = view === 'home';
+  $('#hero').hidden=!home; $('.header').hidden=home; $('#main').hidden=home;
+  $('#library').hidden=view!=='library'; $('#studio').hidden=!studio;
+  document.body.classList.toggle('on-home',home);
+  $('#library-nav').classList.toggle('active',view==='library');
+  $('#library-nav').setAttribute('aria-current',view==='library'?'page':'false');
+  $('#profile-label').textContent=admin?'Mein Studio':'Admin-Login';
+  if(updateHash){ const hash=home?'':studio?'#studio':'#folgen'; if(location.hash!==hash)history.pushState(null,'',location.pathname+location.search+hash); }
+  $('#setup-note').hidden=configured;
+  // The unconfigured site offers a clearly labelled preview, never a fake admin login.
+  $('#login-form').hidden=admin || (!configured && localStudioPreview);
+  $('#preview-studio').hidden=configured;
+  $('#login-form button[type="submit"]').disabled=!configured;
+  $('#login-form button[type="submit"]').textContent=configured?'Anmelden →':'Anmeldung nach Einrichtung verfügbar';
+  $('#login-form input[name="email"]').disabled=!configured;$('#login-form input[name="password"]').disabled=!configured;
+  $('#editor-area').hidden=!admin && (configured || !localStudioPreview); $('#logout').hidden=!admin;
+  if(updateHash){window.scrollTo({top:0,behavior:'instant'}); if(!home)$('#main').focus({preventScroll:true});}
+  if(studio && admin)refreshEpisodes();
 }
+function currentView(){return location.hash==='#studio'?'studio':location.hash==='#folgen'?'library':'home';}
 function renderLibrary(){
-  // The server independently enforces release dates, including file access.
-  const published=episodes.filter(e=>e.status==='published' && new Date(e.release_at)<=new Date());
-  $('#episode-count').textContent=published.length;
-  $('#episodes').innerHTML=published.length ? published.map((e,i)=>`<article class="episode-card"><div class="episode-art" aria-hidden="true">${String(i+1).padStart(2,'0')}<small>FÜR DICH</small></div><div class="episode-body"><div class="episode-meta">${durationText(e.duration)} · ${escapeHtml(new Intl.DateTimeFormat('de-DE',{day:'numeric',month:'long',year:'numeric'}).format(new Date(e.release_at)))}</div><h3>${escapeHtml(e.title)}</h3>${e.description?`<p>${escapeHtml(e.description)}</p>`:''}</div><button class="play-button" data-play="${e.id}" aria-label="${escapeHtml(e.title)} abspielen">▶</button></article>`).join('') : `<div class="empty-library"><div class="empty-icon" aria-hidden="true">♡</div><div><p class="eyebrow">BALD GIBT ES ETWAS ZU HÖREN</p><h3>Ein Platz für deine Lieblingsgeschichten.</h3><p>Hier warten bald ganz persönliche Hörspiele auf dich.<br>Mit einer vertrauten Stimme. Und ganz viel Herz.</p></div></div>`;
+  const visible=episodes.filter(e=>e.status==='published').sort((a,b)=>new Date(a.release_at)-new Date(b.release_at));
+  const released=visible.filter(isReleased);
+  $('#episode-count').textContent=released.length;
+  $('#episodes').innerHTML=visible.length ? visible.map((e,i)=>{
+    const ready=isReleased(e);
+    return `<article class="episode-card ${ready?'':'upcoming'}"><div class="episode-art" aria-hidden="true">${String(i+1).padStart(2,'0')}<small>FOLGE</small></div><div class="episode-body"><div class="episode-meta">${durationText(e.duration)} · ${ready?'Für dich bereit':`Ab ${displayDate(e.release_at)}`}</div><h3>${escapeHtml(e.title)}</h3>${e.description?`<p>${escapeHtml(e.description)}</p>`:''}</div>${ready?`<div class="episode-actions"><button class="primary" data-play="${e.id}" aria-label="${escapeHtml(e.title)} abspielen"><span aria-hidden="true">▶</span> Abspielen</button><button class="outline" data-download="${e.id}" aria-label="${escapeHtml(e.title)} herunterladen"><span aria-hidden="true">↓</span> Download</button></div>`:'<span class="release-label">Bald für dich da<br>Noch nicht abspielbar</span>'}</article>`;
+  }).join('') : `<div class="empty-library"><div class="empty-icon" aria-hidden="true">♡</div><div><p class="eyebrow">BALD GIBT ES ETWAS ZU HÖREN</p><h3>Deine erste Geschichte kommt bald.</h3><p>Sobald eine Folge bereit ist, findest du sie hier.<br>Zum Anhören, Herunterladen und Immer-wieder-Hören.</p></div></div>`;
+  const next=visible.find(e=>!isReleased(e));
+  $('#next-release').hidden=!next;
+  if(next){$('#next-title').textContent=next.title;$('#next-date').textContent=`Für dich ab ${displayDate(next.release_at)} Uhr`;$('#next-release').dataset.release=next.release_at;}
+  else delete $('#next-release').dataset.release;
+  tickCountdown();
+}
+function tickCountdown(){
+  const date=$('#next-release').dataset.release;if(!date)return;
+  const remaining=Math.max(0,Math.ceil((new Date(date).getTime()-serverNow())/1000));
+  const parts=[Math.floor(remaining/86400),Math.floor(remaining%86400/3600),Math.floor(remaining%3600/60),remaining%60];
+  ['days','hours','minutes','seconds'].forEach((part,i)=>{$(`#count-${part}`).textContent=String(parts[i]).padStart(2,'0');});
+  $('#release-pending').hidden=remaining>0;
+  if(remaining===0 && configured && performance.now()-releaseRefreshAt>5000){releaseRefreshAt=performance.now();refreshEpisodes(true);}
 }
 function renderManage(){
   $('#manage-list').innerHTML=episodes.length ? episodes.map(e=>`<div class="manage-row"><div><strong>${escapeHtml(e.title)}</strong><small>${e.status==='draft'?'Noch nicht veröffentlicht':displayDate(e.release_at)} · ${durationText(e.duration)}</small></div><span class="badge">${statusOf(e)}</span><div class="row-actions"><button class="text-button" data-play="${e.id}" aria-label="${escapeHtml(e.title)} probehören">Anhören</button><button class="text-button" data-edit="${e.id}">Bearbeiten</button><button class="text-button" data-delete="${e.id}">Löschen</button></div></div>`).join('') : '<div class="empty-manage">Hier erscheinen deine Aufnahmen, sobald du dein erstes Hörspiel gespeichert hast.</div>';
@@ -44,12 +77,15 @@ function renderManage(){
 async function refreshEpisodes(silent=false){
   if(!configured){renderLibrary();renderManage();return;}
   try {
-    episodes=await request('/rest/v1/episodes?select=*&order=release_at.desc.nullslast,created_at.desc');
+    const feed=await request('/rest/v1/rpc/library_feed',{method:'POST',body:{}});
+    serverBaseline=new Date(feed.server_now).getTime();monotonicBaseline=performance.now();
+    episodes=admin ? await request('/rest/v1/episodes?select=*&order=release_at.desc.nullslast,created_at.desc') : feed.episodes;
     $('#connection-note').hidden=true;renderLibrary();renderManage();
   }catch(e){ if(!silent){$('#connection-note').textContent='Die Hörspiele konnten nicht geladen werden. '+e.message;$('#connection-note').hidden=false;if(!$('#studio').hidden)toast(e.message);} }
 }
 async function playEpisode(id){
   const e=episodes.find(e=>e.id===id);if(!e)return;
+  if(!admin && (!isReleased(e)||!e.storage_path)){toast('Diese Folge ist noch nicht freigegeben.');return;}
   try {
     const data=await request(`/storage/v1/object/sign/audio/${encodeURIComponent(e.storage_path)}`,{method:'POST',body:{expiresIn:14400}});
     const url=data.signedURL || data.signedUrl;
@@ -61,13 +97,25 @@ async function playEpisode(id){
     if('mediaSession' in navigator){navigator.mediaSession.metadata=new MediaMetadata({title:e.title,artist:'Herzfrequenz'});}
   }catch(err){toast(err.message);}
 }
+async function downloadEpisode(id,button){
+  const e=episodes.find(e=>e.id===id);if(!e || !isReleased(e) || !e.storage_path)return;
+  button.disabled=true;
+  try{
+    const data=await request(`/storage/v1/object/sign/audio/${encodeURIComponent(e.storage_path)}`,{method:'POST',body:{expiresIn:600}});
+    const signed=data.signedURL || data.signedUrl;if(!signed)throw new Error('Der Download konnte nicht vorbereitet werden.');
+    const url=new URL(signed.startsWith('http')?signed:`${base}/storage/v1${signed}`);
+    const name=e.title.replace(/[\\/:*?"<>|]/g,'-').slice(0,110)+'.mp3';url.searchParams.set('download',name);
+    const link=document.createElement('a');link.href=url.href;link.download=name;link.rel='noopener';document.body.append(link);link.click();link.remove();
+    toast('Dein Download wurde angefordert.');
+  }catch(err){toast(err.message);}finally{button.disabled=false;}
+}
 function updateRelease(){
   const mode=$('input[name="release"]:checked').value;
   $('#schedule-field').hidden=mode!=='scheduled';$('#release-date').required=mode==='scheduled';
   $('#save-button').textContent=editingId?'Änderungen speichern':mode==='draft'?'Entwurf speichern':mode==='scheduled'?'Hörspiel einplanen →':'Hörspiel veröffentlichen →';
 }
 async function selectFile(file){
-  if(!file)return;
+  if(!file || saving)return;
   if(!/\.mp3$/i.test(file.name) || (file.type && !['audio/mpeg','audio/mp3','application/octet-stream'].includes(file.type))){message('Bitte wähle eine MP3-Datei aus.',true);return;}
   if(file.size>50*1024*1024){message('Die MP3 darf höchstens 50 MB groß sein.',true);return;}
   if(file.size===0){message('Diese Datei ist leer.',true);return;}
@@ -85,6 +133,7 @@ function resetEditor(){
   $('#upload-progress').hidden=true;message('');updateRelease();
 }
 function editEpisode(id){
+  if(saving)return;
   const e=episodes.find(e=>e.id===id);if(!e)return;resetEditor();editingId=id;
   $('#editor-title').textContent='Hörspiel bearbeiten';$('#episode-title').value=e.title;$('#episode-description').value=e.description || '';
   const mode=e.status==='draft'?'draft':new Date(e.release_at)>new Date()?'scheduled':'now';
@@ -107,28 +156,29 @@ async function saveEpisode(event){
   if(!admin){message('Bitte melde dich zuerst im Studio an.',true);return;}
   const mode=$('input[name="release"]:checked').value;
   const title=$('#episode-title').value.trim();if(!title){message('Bitte gib einen Titel ein.',true);return;}
-  let date=mode==='scheduled'?new Date($('#release-date').value):new Date();
-  if(mode==='scheduled' && (!Number.isFinite(date.getTime()) || date<=new Date())){message('Wähle einen Zeitpunkt in der Zukunft.',true);return;}
+  let date=mode==='scheduled'?new Date($('#release-date').value):new Date(serverNow());
+  if(mode==='scheduled' && (!Number.isFinite(date.getTime()) || date.getTime()<=serverNow())){message('Wähle einen Zeitpunkt in der Zukunft.',true);return;}
   if(!editingId&&!selectedFile){message('Bitte wähle eine MP3-Datei aus.',true);return;}
   if(!editingId && (!Number.isFinite($('#upload-preview').duration) || $('#upload-preview').duration<=0)){message('Die MP3 wird noch geprüft oder ist nicht abspielbar. Bitte höre sie kurz zur Probe an.',true);return;}
   const original=episodes.find(e=>e.id===editingId);
   const id=editingId || crypto.randomUUID();const path=`${id}.mp3`;
   const record={title,description:$('#episode-description').value.trim(),status:mode==='draft'?'draft':'published',release_at:mode==='draft'?null:(editingId && mode==='now' && original?.status==='published' && new Date(original.release_at)<=new Date()?original.release_at:date.toISOString())};
-  let uploaded=false;let stored=false;saving=true;$('#save-button').disabled=true;$('#episode-form').setAttribute('aria-busy','true');
+  const uploadFile=selectedFile, uploadDuration=Math.max(1,Math.round($('#upload-preview').duration));
+  let uploaded=false;let stored=false;saving=true;$('#episode-form').inert=true;$('#save-button').disabled=true;$('#episode-form').setAttribute('aria-busy','true');
   try {
     if(!editingId){
       message('Deine Aufnahme wird hochgeladen …');$('#upload-progress').hidden=false;$('#upload-progress').value=0;
-      await uploadAudio(path,selectedFile);uploaded=true;
-      Object.assign(record,{id,storage_path:path,duration:Math.round($('#upload-preview').duration),file_size:selectedFile.size});
+      await uploadAudio(path,uploadFile);uploaded=true;
+      Object.assign(record,{id,storage_path:path,duration:uploadDuration,file_size:uploadFile.size});
     }
     message('Dein Hörspiel wird gespeichert …');
     await request(`/rest/v1/episodes${editingId?`?id=eq.${id}`:''}`,{method:editingId?'PATCH':'POST',body:record,headers:{Prefer:'return=minimal'}});stored=true;
     resetEditor();await refreshEpisodes();toast(mode==='draft'?'Dein Entwurf ist gespeichert.':mode==='scheduled'?'Dein Hörspiel ist eingeplant.':'Dein Hörspiel ist jetzt in der Bibliothek.');
   }catch(e){
     // A timed-out POST may still have committed. Check before removing its audio.
-    if(uploaded&&!stored){try{const existing=await request(`/rest/v1/episodes?id=eq.${id}&select=id`);if(existing.length){stored=true;await refreshEpisodes();message('Die Aufnahme wurde gespeichert. Du findest sie unter „Deine Aufnahmen“.');return;}await request('/storage/v1/object/audio',{method:'DELETE',body:{prefixes:[path]}});}catch{/* Keep inaccessible orphan rather than delete audio belonging to a committed record. */}}
+    if(uploaded&&!stored){try{const existing=await request(`/rest/v1/episodes?id=eq.${id}&select=id`);if(existing.length){stored=true;resetEditor();await refreshEpisodes();message('Die Aufnahme wurde gespeichert. Du findest sie unter „Deine Aufnahmen“.');return;}await request('/storage/v1/object/audio',{method:'DELETE',body:{prefixes:[path]}});}catch{/* Keep inaccessible orphan rather than delete audio belonging to a committed record. */}}
     message(e.message,true);
-  }finally{saving=false;$('#save-button').disabled=false;$('#episode-form').removeAttribute('aria-busy');$('#upload-progress').hidden=true;}
+  }finally{saving=false;$('#episode-form').inert=false;$('#save-button').disabled=false;$('#episode-form').removeAttribute('aria-busy');$('#upload-progress').hidden=true;}
 }
 async function deleteEpisode(){
   const e=episodes.find(e=>e.id===deletingId);if(!e)return;$('#delete-episode').disabled=true;
@@ -158,8 +208,10 @@ function renderQR(){
 function openShare(){
   $('#share-url').value=publicUrl();$('#share-note').textContent=publicUrl()?'Der Link bleibt gleich, auch wenn neue Hörspiele dazukommen.':'Sobald deine Website online ist, trägst du hier ihre öffentliche Adresse ein.';renderQR();$('#share-dialog').showModal();
 }
-$('#library-nav').onclick=()=>setView(false);$('.brand').onclick=e=>{e.preventDefault();setView(false);};$('#studio-nav').onclick=()=>setView(true);
-window.addEventListener('hashchange',()=>setView(location.hash==='#studio',false));
+$('#hero-play').onclick=()=>setView('library');$('#home-nav').onclick=()=>setView('home');
+$('#library-nav').onclick=()=>setView('library');$('.brand').onclick=e=>{e.preventDefault();setView('home');};$('#studio-nav').onclick=()=>setView('studio');
+window.addEventListener('hashchange',()=>setView(currentView(),false));
+window.addEventListener('popstate',()=>setView(currentView(),false));
 $('#audio-file').onchange=e=>selectFile(e.target.files[0]);
 $('#dropzone').ondragover=e=>{e.preventDefault();$('#dropzone').classList.add('dragover');};
 $('#dropzone').ondragleave=()=>$('#dropzone').classList.remove('dragover');
@@ -168,6 +220,7 @@ document.querySelectorAll('[name="release"]').forEach(el=>el.onchange=updateRele
 $('#timezone-note').textContent=`Zeitzone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Der Zeitpunkt wird weltweit eindeutig gespeichert.`;
 $('#episode-form').onsubmit=saveEpisode;$('#cancel-edit').onclick=resetEditor;
 $('#refresh-button').onclick=()=>refreshEpisodes();$('#share-button').onclick=openShare;$('#studio-share').onclick=openShare;
+$('#preview-studio').onclick=()=>{localStudioPreview=true;setView('studio');};
 $('#setup-details').onclick=()=>$('#setup-dialog').showModal();$('#close-player').onclick=closePlayer;
 $('#upload-preview').onplay=()=>$('#audio').pause();
 $('#upload-preview').onerror=()=>message('Die Datei konnte nicht als Audio geöffnet werden. Bitte wähle eine gültige MP3.',true);
@@ -175,7 +228,7 @@ $('#audio').onerror=()=>{if(currentEpisode)$('#player-error').textContent='Die A
 $('#audio').onloadedmetadata=()=>{if(!currentEpisode)return;try{const time=Number(localStorage.getItem(`heart-progress-${currentEpisode.id}`));if(time>0&&time<$('#audio').duration-5)$('#audio').currentTime=time;}catch{}};
 let lastProgress=0;$('#audio').ontimeupdate=()=>{if(currentEpisode&&Date.now()-lastProgress>5000){lastProgress=Date.now();try{localStorage.setItem(`heart-progress-${currentEpisode.id}`,String($('#audio').currentTime));}catch{}}};
 $('#audio').onended=()=>{if(currentEpisode)try{localStorage.removeItem(`heart-progress-${currentEpisode.id}`);}catch{}};
-document.addEventListener('click',e=>{const target=e.target.closest('button');if(!target)return;if(target.dataset.play)playEpisode(target.dataset.play);if(target.dataset.edit)editEpisode(target.dataset.edit);if(target.dataset.delete){deletingId=target.dataset.delete;$('#confirm-dialog').showModal();}});
+document.addEventListener('click',e=>{const target=e.target.closest('button');if(!target)return;if(target.dataset.play)playEpisode(target.dataset.play);if(target.dataset.download)downloadEpisode(target.dataset.download,target);if(target.dataset.edit)editEpisode(target.dataset.edit);if(target.dataset.delete){deletingId=target.dataset.delete;$('#confirm-dialog').showModal();}});
 $('#keep-episode').onclick=()=>$('#confirm-dialog').close();$('#delete-episode').onclick=deleteEpisode;
 $('#share-url').oninput=renderQR;
 $('#download-qr').onclick=()=>{const svg=$('#qr-code svg');if(!svg)return;const blob=new Blob([new XMLSerializer().serializeToString(svg)],{type:'image/svg+xml'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='herzfrequenz-qr-code.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
@@ -193,4 +246,5 @@ $('#logout').onclick=async()=>{try{await request('/auth/v1/logout',{method:'POST
 setInterval(async()=>{if(session?.refresh_token){try{session=await request('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:session.refresh_token}});}catch{session=null;admin=false;setView(true);toast('Bitte melde dich erneut an.');}}},40*60*1000);
 setInterval(()=>{if(!document.hidden)refreshEpisodes(true);},30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshEpisodes(true);});
-setView(location.hash==='#studio',false);renderLibrary();renderManage();refreshEpisodes();
+setInterval(tickCountdown,1000);
+setView(currentView(),false);renderLibrary();renderManage();refreshEpisodes();

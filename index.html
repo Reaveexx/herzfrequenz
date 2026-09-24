@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#171a25">
+  <meta name="theme-color" content="#1b2a4e">
   <meta name="description" content="Ein Ort für Geschichten, die von Herzen kommen. Deine persönliche Hörspielbibliothek.">
   <meta name="robots" content="noindex, nofollow">
   <title>Herzfrequenz · Geschichten für dich</title>
@@ -15,21 +15,29 @@
 </head>
 <body>
   <a class="skip" href="#main">Zum Inhalt</a>
-  <header class="header wrap">
-    <a class="brand" href="#" aria-label="Herzfrequenz – Startseite"><span class="brand-mark" aria-hidden="true">h<span>♥</span></span><span>herzfrequenz<small>GESCHICHTEN FÜR DICH</small></span></a>
-    <nav aria-label="Hauptnavigation"><button class="nav-button active" id="library-nav">Hörbibliothek</button><button class="nav-button" id="studio-nav"><span aria-hidden="true">✦</span> Mein Studio</button></nav>
+  <section id="hero" class="hero" aria-labelledby="hero-title">
+    <div class="hero-content"><div class="hero-wordmark"><img src="./merit-hero.png" alt="Herzfrequenz" width="1200" height="628" fetchpriority="high"></div>
+      <h1 id="hero-title">Meine Stimme dein <span style="white-space:nowrap">Lieblings Ort</span></h1><p class="hero-subtitle">jede Woche neue Folge!</p>
+      <button id="hero-play" class="hero-play">Play<span class="sr-only"> – Zur Folgenübersicht</span></button>
+    </div>
+    <div class="hero-photos"><img src="./merit-hero.png" alt="Unsere gemeinsamen Erinnerungen" width="1200" height="628"></div>
+  </section>
+  <header class="header wrap" hidden>
+    <a class="brand" href="#" aria-label="Herzfrequenz – Startseite"><span>Herzfre<span class="brand-red">quenz</span><small>MEINE STIMME. FÜR DICH.</small></span></a>
+    <nav aria-label="Hauptnavigation"><button class="nav-button" id="home-nav">Startseite</button><button class="nav-button active" id="library-nav">Alle Folgen</button></nav>
   </header>
-  <main id="main" class="wrap" tabindex="-1">
-    <section id="library">
-      <div class="intro"><div><p class="eyebrow">MIT LIEBE AUFGENOMMEN</p><h1>Meine Stimme.<br>Dein <em>Lieblingsort.</em></h1><p class="intro-copy">Für lange Tage, ruhige Nächte<br>und die kleinen Momente dazwischen.</p></div><div class="dedication"><span aria-hidden="true">♡</span><p>Eine Geschichte.<br>Ein bisschen Nähe.<br>Nur für dich.</p></div></div>
+  <main id="main" class="wrap" tabindex="-1" hidden>
+    <section id="library" hidden>
+      <div class="collection-intro"><p class="eyebrow">DEINE KLEINE AUSZEIT</p><h1>Geschichten <em>für dich.</em></h1><p>Such dir eine Folge aus. Mach es dir gemütlich.</p></div>
+      <section id="next-release" class="next-release" aria-labelledby="next-title" hidden><div><p class="eyebrow">VORFREUDE KLINGT SO</p><h2 id="next-title"></h2><p id="next-date"></p></div><div class="countdown" role="timer" aria-label="Zeit bis zur nächsten Folge"><div><strong id="count-days">00</strong><span>Tage</span></div><b aria-hidden="true">:</b><div><strong id="count-hours">00</strong><span>Stunden</span></div><b aria-hidden="true">:</b><div><strong id="count-minutes">00</strong><span>Minuten</span></div><b aria-hidden="true">:</b><div><strong id="count-seconds">00</strong><span>Sekunden</span></div></div><p id="release-pending" hidden>Die Folge wird gerade freigeschaltet …</p></section>
       <div id="connection-note" class="notice" hidden></div>
-      <section class="library-section" aria-labelledby="library-title"><div class="section-heading"><h2 id="library-title">Deine Hörspiele <span id="episode-count">0</span></h2><button class="text-button" id="share-button"><span aria-hidden="true">▦</span> Link & QR-Code</button></div><div id="episodes" aria-live="polite"></div></section>
+      <section class="library-section" aria-labelledby="library-title"><div class="section-heading"><h2 id="library-title">Alle Folgen <span id="episode-count">0</span></h2><button class="text-button" id="share-button"><span aria-hidden="true">▦</span> Link & QR-Code</button></div><div id="episodes" aria-live="polite"></div></section>
       <div class="little-note"><span aria-hidden="true">✧</span><p>Manche Dinge sagt man am schönsten<br>mit einer Geschichte.</p></div>
     </section>
     <section id="studio" hidden>
       <div class="studio-heading"><div><p class="eyebrow">DEIN KLEINES TONSTUDIO</p><h1>Von dir.<br><em>Für sie.</em></h1><p class="intro-copy">Aufnehmen. Hochladen. Freude schenken.</p></div><button id="logout" class="text-button" hidden>Abmelden</button></div>
       <div id="setup-note" class="notice" hidden><strong>Dein Studio wird gerade eingerichtet.</strong><p>Du kannst bereits eine MP3 auswählen und probehören. Zum Speichern und Veröffentlichen muss der Online-Speicher noch verbunden werden.</p><button id="setup-details" class="text-button">Einrichtung ansehen ↗</button></div>
-      <form id="login-form" class="login-card" hidden><div><p class="eyebrow">NUR FÜR DICH</p><h2>Willkommen im Studio</h2><p>Melde dich an, um deine Hörspiele zu verwalten.</p></div><label>E-Mail<input name="email" type="email" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><button class="primary" type="submit">Anmelden <span aria-hidden="true">→</span></button><p id="login-error" class="form-message" role="alert"></p></form>
+      <form id="login-form" class="login-card" hidden><div><p class="eyebrow">NUR FÜR DICH</p><h2>Willkommen im Studio</h2><p>Melde dich an, um deine Hörspiele zu verwalten.</p></div><label>E-Mail<input name="email" type="email" autocomplete="username" required></label><label>Passwort<input name="password" type="password" autocomplete="current-password" required></label><button class="primary" type="submit">Anmelden <span aria-hidden="true">→</span></button><p id="login-error" class="form-message" role="alert"></p><button id="preview-studio" class="text-button" type="button" hidden>Studio-Vorschau ansehen →</button></form>
       <div id="editor-area">
         <div class="studio-grid"><form id="episode-form" class="editor-card">
           <div class="section-heading"><h2 id="editor-title">Ein neues Hörspiel</h2><span class="step-label">01 — AUFNAHME</span></div>
@@ -47,7 +55,7 @@
       </div>
     </section>
   </main>
-  <footer class="wrap footer"><span>herzfrequenz</span><p>Von Herzen. Für deine Ohren.</p><span aria-hidden="true">♡</span></footer>
+  <footer class="wrap footer"><span>Von Herzen. Für deine Ohren.</span><button id="studio-nav" class="profile-button" aria-label="Admin-Login öffnen"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg><span id="profile-label">Admin-Login</span></button></footer>
   <div id="player" class="player" hidden><div class="player-inner wrap"><div class="player-info"><span class="mini-cover" aria-hidden="true">♥</span><div><strong id="playing-title"></strong><small id="playing-description">Für dich aufgenommen</small></div></div><audio id="audio" controls preload="metadata" aria-label="Hörspiel-Player"></audio><button class="icon-button" id="close-player" aria-label="Player schließen">×</button></div><p id="player-error" class="wrap" role="alert"></p></div>
   <dialog id="share-dialog" aria-labelledby="share-title"><form method="dialog"><button class="dialog-close icon-button" aria-label="Schließen">×</button></form><p class="eyebrow">EIN KLEINES STÜCK NÄHE</p><h2 id="share-title">Ein Scan. Deine Stimme.</h2><p>Diesen QR-Code kannst du ausdrucken oder verschenken. Er führt direkt zur Hörbibliothek.</p><label>Adresse deiner Website<input id="share-url" type="url" placeholder="https://dein-name.github.io/herzfrequenz/"></label><p class="muted" id="share-note"></p><div id="qr-code" class="qr-code"></div><p id="share-message" role="status"></p><div class="share-actions"><button id="download-qr" class="primary" disabled>QR-Code speichern</button><button id="copy-link" class="outline" disabled>Link kopieren</button></div></dialog>
   <dialog id="setup-dialog" aria-labelledby="setup-title"><form method="dialog"><button class="dialog-close icon-button" aria-label="Schließen">×</button></form><p class="eyebrow">EINMAL EINRICHTEN</p><h2 id="setup-title">Fast bereit für deine Geschichten.</h2><ol class="setup-steps"><li>Online-Speicher und geschütztes Studio bei Supabase einrichten.</li><li>Die beiden öffentlichen Verbindungswerte in <code>config.js</code> eintragen.</li><li>Website auf GitHub Pages veröffentlichen.</li></ol><p>Die vollständige Anleitung liegt im Projekt als <strong>START-HIER.md</strong>.</p><p>Es werden noch keine Aufnahmen online gespeichert.</p></dialog>
