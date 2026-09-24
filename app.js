@@ -49,14 +49,19 @@ function setView(view, updateHash=true) {
   if(studio && admin)refreshEpisodes();
 }
 function currentView(){return location.hash==='#studio'?'studio':location.hash==='#folgen'?'library':'home';}
+function seriesOf(e){return (e.series || '').trim();}
+function orderedSeries(items){return [...items].sort((a,b)=>(a.episode_number || 99999)-(b.episode_number || 99999) || new Date(a.release_at || a.created_at)-new Date(b.release_at || b.created_at) || a.id.localeCompare(b.id));}
+function nextEpisodeNumber(){const name=$('#episode-series').value.trim();$('#episode-number').value=1+Math.max(0,...episodes.filter(e=>seriesOf(e)===name && e.id!==editingId).map(e=>e.episode_number || 0));}
+function renderSeriesOptions(){$('#series-options').innerHTML=[...new Set(episodes.map(seriesOf).filter(Boolean))].sort().map(name=>`<option value="${escapeHtml(name)}"></option>`).join('');}
 function renderLibrary(){
   const visible=episodes.filter(e=>e.status==='published').sort((a,b)=>new Date(a.release_at)-new Date(b.release_at));
   const released=visible.filter(isReleased);
   $('#episode-count').textContent=released.length;
-  $('#episodes').innerHTML=visible.length ? visible.map((e,i)=>{
+  const groups=new Map();for(const e of visible){const key=seriesOf(e);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(e);}
+  $('#episodes').innerHTML=visible.length ? [...groups].map(([name,items])=>`<section class="series-group"><div class="series-heading"><div><p class="eyebrow">${name?'HÖRSPIEL-PLAYLIST':'DEINE GESCHICHTEN'}</p><h3>${escapeHtml(name || 'Einzelne Geschichten')}</h3></div><span>${items.filter(isReleased).length} von ${items.length} Folgen bereit</span></div>${orderedSeries(items).map((e,i)=>{
     const ready=isReleased(e);
-    return `<article class="episode-card ${ready?'':'upcoming'}"><div class="episode-art" aria-hidden="true">${String(i+1).padStart(2,'0')}<small>FOLGE</small></div><div class="episode-body"><div class="episode-meta">${durationText(e.duration)} · ${ready?'Für dich bereit':`Ab ${displayDate(e.release_at)}`}</div><h3>${escapeHtml(e.title)}</h3>${e.description?`<p>${escapeHtml(e.description)}</p>`:''}</div>${ready?`<div class="episode-actions"><button class="primary" data-play="${e.id}" aria-label="${escapeHtml(e.title)} abspielen"><span aria-hidden="true">▶</span> Abspielen</button><button class="outline" data-download="${e.id}" aria-label="${escapeHtml(e.title)} herunterladen"><span aria-hidden="true">↓</span> Download</button></div>`:'<span class="release-label">Bald für dich da<br>Noch nicht abspielbar</span>'}</article>`;
-  }).join('') : `<div class="empty-library"><div class="empty-icon" aria-hidden="true">♡</div><div><p class="eyebrow">BALD GIBT ES ETWAS ZU HÖREN</p><h3>Deine erste Geschichte kommt bald.</h3><p>Sobald eine Folge bereit ist, findest du sie hier.<br>Zum Anhören, Herunterladen und Immer-wieder-Hören.</p></div></div>`;
+    return `<article class="episode-card ${ready?'':'upcoming'}"><div class="episode-art" aria-hidden="true">${String(e.episode_number || i+1).padStart(2,'0')}<small>FOLGE</small></div><div class="episode-body"><div class="episode-meta">${durationText(e.duration)} · ${ready?'Für dich bereit':`Ab ${displayDate(e.release_at)}`}</div><h3>${escapeHtml(e.title)}</h3>${e.description?`<p>${escapeHtml(e.description)}</p>`:''}</div>${ready?`<div class="episode-actions"><button class="primary" data-play="${e.id}" aria-label="${escapeHtml(e.title)} abspielen"><span aria-hidden="true">▶</span> Abspielen</button><button class="outline" data-download="${e.id}" aria-label="${escapeHtml(e.title)} herunterladen"><span aria-hidden="true">↓</span> Download</button></div>`:'<span class="release-label">Bald für dich da<br>Noch nicht abspielbar</span>'}</article>`;
+  }).join('')}</section>`).join('') : `<div class="empty-library"><div class="empty-icon" aria-hidden="true">♡</div><div><p class="eyebrow">BALD GIBT ES ETWAS ZU HÖREN</p><h3>Deine erste Geschichte kommt bald.</h3><p>Sobald eine Folge bereit ist, findest du sie hier.<br>Zum Anhören, Herunterladen und Immer-wieder-Hören.</p></div></div>`;
   const next=visible.find(e=>!isReleased(e));
   $('#next-release').hidden=!next;
   if(next){$('#next-title').textContent=next.title;$('#next-date').textContent=`Für dich ab ${displayDate(next.release_at)} Uhr`;$('#next-release').dataset.release=next.release_at;}
@@ -72,7 +77,8 @@ function tickCountdown(){
   if(remaining===0 && configured && performance.now()-releaseRefreshAt>5000){releaseRefreshAt=performance.now();refreshEpisodes(true);}
 }
 function renderManage(){
-  $('#manage-list').innerHTML=episodes.length ? episodes.map(e=>`<div class="manage-row"><div><strong>${escapeHtml(e.title)}</strong><small>${e.status==='draft'?'Noch nicht veröffentlicht':displayDate(e.release_at)} · ${durationText(e.duration)}</small></div><span class="badge">${statusOf(e)}</span><div class="row-actions"><button class="text-button" data-play="${e.id}" aria-label="${escapeHtml(e.title)} probehören">Anhören</button><button class="text-button" data-edit="${e.id}">Bearbeiten</button><button class="text-button" data-delete="${e.id}">Löschen</button></div></div>`).join('') : '<div class="empty-manage">Hier erscheinen deine Aufnahmen, sobald du dein erstes Hörspiel gespeichert hast.</div>';
+  renderSeriesOptions();
+  $('#manage-list').innerHTML=episodes.length ? episodes.map(e=>`<div class="manage-row"><div><strong>${escapeHtml(e.title)}</strong><small>${escapeHtml(seriesOf(e) || 'Einzelne Geschichten')} · Folge ${e.episode_number || '–'} · ${e.status==='draft'?'Noch nicht veröffentlicht':displayDate(e.release_at)} · ${durationText(e.duration)}</small></div><span class="badge">${statusOf(e)}</span><div class="row-actions"><button class="text-button" data-play="${e.id}" aria-label="${escapeHtml(e.title)} probehören">Anhören</button><button class="text-button" data-edit="${e.id}">Bearbeiten</button><button class="text-button" data-delete="${e.id}">Löschen</button></div></div>`).join('') : '<div class="empty-manage">Hier erscheinen deine Aufnahmen, sobald du dein erstes Hörspiel gespeichert hast.</div>';
 }
 async function refreshEpisodes(silent=false){
   if(!configured){renderLibrary();renderManage();return;}
@@ -80,7 +86,7 @@ async function refreshEpisodes(silent=false){
     const feed=await request('/rest/v1/rpc/library_feed',{method:'POST',body:{}});
     serverBaseline=new Date(feed.server_now).getTime();monotonicBaseline=performance.now();
     episodes=admin ? await request('/rest/v1/episodes?select=*&order=release_at.desc.nullslast,created_at.desc') : feed.episodes;
-    $('#connection-note').hidden=true;renderLibrary();renderManage();
+    $('#connection-note').hidden=true;renderLibrary();renderManage();if(!editingId&&!$('#episode-title').value)nextEpisodeNumber();
   }catch(e){ if(!silent){$('#connection-note').textContent='Die Hörspiele konnten nicht geladen werden. '+e.message;$('#connection-note').hidden=false;if(!$('#studio').hidden)toast(e.message);} }
 }
 async function playEpisode(id){
@@ -130,12 +136,12 @@ function resetEditor(){
   $('#upload-preview').pause();$('#upload-preview').removeAttribute('src');$('#upload-preview').load();$('#upload-preview').hidden=true;
   $('#episode-form').reset();$('#file-name').textContent='Deine Geschichte beginnt hier';$('#file-hint').textContent='MP3 hier ablegen oder Datei auswählen';
   $('#editor-title').textContent='Ein neues Hörspiel';$('#cancel-edit').hidden=true;$('#audio-file').disabled=false;$('#dropzone').hidden=false;
-  $('#upload-progress').hidden=true;message('');updateRelease();
+  $('#upload-progress').hidden=true;message('');nextEpisodeNumber();updateRelease();
 }
 function editEpisode(id){
   if(saving)return;
   const e=episodes.find(e=>e.id===id);if(!e)return;resetEditor();editingId=id;
-  $('#editor-title').textContent='Hörspiel bearbeiten';$('#episode-title').value=e.title;$('#episode-description').value=e.description || '';
+  $('#editor-title').textContent='Hörspiel bearbeiten';$('#episode-title').value=e.title;$('#episode-description').value=e.description || '';$('#episode-series').value=seriesOf(e);$('#episode-number').value=e.episode_number || 1;
   const mode=e.status==='draft'?'draft':new Date(e.release_at)>new Date()?'scheduled':'now';
   $(`input[name="release"][value="${mode}"]`).checked=true;
   if(e.release_at){const date=new Date(e.release_at);$('#release-date').value=new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);}
@@ -156,13 +162,16 @@ async function saveEpisode(event){
   if(!admin){message('Bitte melde dich zuerst im Studio an.',true);return;}
   const mode=$('input[name="release"]:checked').value;
   const title=$('#episode-title').value.trim();if(!title){message('Bitte gib einen Titel ein.',true);return;}
+  const series=$('#episode-series').value.trim(), episodeNumber=Number($('#episode-number').value);
+  if(!Number.isInteger(episodeNumber)||episodeNumber<1||episodeNumber>9999){message('Bitte gib eine gültige Folgennummer ein.',true);return;}
+  if(episodes.some(e=>e.id!==editingId&&seriesOf(e)===series&&e.episode_number===episodeNumber)){message('Diese Folgennummer ist in dieser Playlist bereits vergeben.',true);return;}
   let date=mode==='scheduled'?new Date($('#release-date').value):new Date(serverNow());
   if(mode==='scheduled' && (!Number.isFinite(date.getTime()) || date.getTime()<=serverNow())){message('Wähle einen Zeitpunkt in der Zukunft.',true);return;}
   if(!editingId&&!selectedFile){message('Bitte wähle eine MP3-Datei aus.',true);return;}
   if(!editingId && (!Number.isFinite($('#upload-preview').duration) || $('#upload-preview').duration<=0)){message('Die MP3 wird noch geprüft oder ist nicht abspielbar. Bitte höre sie kurz zur Probe an.',true);return;}
   const original=episodes.find(e=>e.id===editingId);
   const id=editingId || crypto.randomUUID();const path=`${id}.mp3`;
-  const record={title,description:$('#episode-description').value.trim(),status:mode==='draft'?'draft':'published',release_at:mode==='draft'?null:(editingId && mode==='now' && original?.status==='published' && new Date(original.release_at)<=new Date()?original.release_at:date.toISOString())};
+  const record={title,series,episode_number:episodeNumber,description:$('#episode-description').value.trim(),status:mode==='draft'?'draft':'published',release_at:mode==='draft'?null:(editingId && mode==='now' && original?.status==='published' && new Date(original.release_at)<=new Date()?original.release_at:date.toISOString())};
   const uploadFile=selectedFile, uploadDuration=Math.max(1,Math.round($('#upload-preview').duration));
   let uploaded=false;let stored=false;saving=true;$('#episode-form').inert=true;$('#save-button').disabled=true;$('#episode-form').setAttribute('aria-busy','true');
   try {
@@ -206,12 +215,14 @@ function renderQR(){
   catch{$('#share-message').textContent='Dieser Link ist zu lang für einen QR-Code.';$('#download-qr').disabled=true;}
 }
 function openShare(){
+  if(!admin)return;
   $('#share-url').value=publicUrl();$('#share-note').textContent=publicUrl()?'Der Link bleibt gleich, auch wenn neue Hörspiele dazukommen.':'Sobald deine Website online ist, trägst du hier ihre öffentliche Adresse ein.';renderQR();$('#share-dialog').showModal();
 }
 $('#hero-play').onclick=()=>setView('library');$('#home-nav').onclick=()=>setView('home');
 $('#library-nav').onclick=()=>setView('library');$('.brand').onclick=e=>{e.preventDefault();setView('home');};$('#studio-nav').onclick=()=>setView('studio');
 window.addEventListener('hashchange',()=>setView(currentView(),false));
 window.addEventListener('popstate',()=>setView(currentView(),false));
+$('#episode-series').onchange=nextEpisodeNumber;
 $('#audio-file').onchange=e=>selectFile(e.target.files[0]);
 $('#dropzone').ondragover=e=>{e.preventDefault();$('#dropzone').classList.add('dragover');};
 $('#dropzone').ondragleave=()=>$('#dropzone').classList.remove('dragover');
@@ -219,7 +230,7 @@ $('#dropzone').ondrop=e=>{e.preventDefault();$('#dropzone').classList.remove('dr
 document.querySelectorAll('[name="release"]').forEach(el=>el.onchange=updateRelease);
 $('#timezone-note').textContent=`Zeitzone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Der Zeitpunkt wird weltweit eindeutig gespeichert.`;
 $('#episode-form').onsubmit=saveEpisode;$('#cancel-edit').onclick=resetEditor;
-$('#refresh-button').onclick=()=>refreshEpisodes();$('#share-button').onclick=openShare;$('#studio-share').onclick=openShare;
+$('#refresh-button').onclick=()=>refreshEpisodes();$('#studio-share').onclick=openShare;
 $('#preview-studio').onclick=()=>{localStudioPreview=true;setView('studio');};
 $('#setup-details').onclick=()=>$('#setup-dialog').showModal();$('#close-player').onclick=closePlayer;
 $('#upload-preview').onplay=()=>$('#audio').pause();

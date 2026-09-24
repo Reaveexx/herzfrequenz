@@ -16,6 +16,8 @@ grant execute on function public.is_admin() to anon, authenticated;
 
 create table public.episodes (
   id uuid primary key default gen_random_uuid(),
+  series text not null default '' check(length(series)<=120),
+  episode_number integer check(episode_number between 1 and 9999),
   title text not null check(length(trim(title)) between 1 and 120),
   description text not null default '' check(length(description) <= 2000),
   storage_path text not null unique,
@@ -27,6 +29,7 @@ create table public.episodes (
   check(status = 'draft' or release_at is not null),
   check(storage_path = id::text || '.mp3')
 );
+create unique index episodes_series_number_unique on public.episodes(series,episode_number);
 create index episodes_release_idx on public.episodes (release_at desc) where status = 'published';
 alter table public.episodes enable row level security;
 revoke all on public.episodes from anon, authenticated;
@@ -75,6 +78,8 @@ as $$
       select jsonb_agg(jsonb_build_object(
         'id', e.id,
         'title', e.title,
+        'series', e.series,
+        'episode_number', e.episode_number,
         'description', e.description,
         'duration', e.duration,
         'status', e.status,

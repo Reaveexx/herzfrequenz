@@ -8,10 +8,10 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Herzfrequenz · Geschichten für dich</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./style.css?v=20260924-heart2">
-  <script src="./config.js?v=20260924-heart2" defer></script>
+  <link rel="stylesheet" href="./style.css?v=20260924-series1">
+  <script src="./config.js?v=20260924-series1" defer></script>
   <script src="./qrcode.js" defer></script>
-  <script src="./app.js?v=20260924-heart2" defer></script>
+  <script src="./app.js?v=20260924-series1" defer></script>
 </head>
 <body>
   <dialog id="heart-intro" class="heart-intro" aria-labelledby="intro-title">
@@ -38,7 +38,7 @@
       <div class="collection-intro"><p class="eyebrow">DEINE KLEINE AUSZEIT</p><h1>Geschichten <em>für dich.</em></h1><p>Such dir eine Folge aus. Mach es dir gemütlich.</p></div>
       <section id="next-release" class="next-release" aria-labelledby="next-title" hidden><div><p class="eyebrow">VORFREUDE KLINGT SO</p><h2 id="next-title"></h2><p id="next-date"></p></div><div class="countdown" role="timer" aria-label="Zeit bis zur nächsten Folge"><div><strong id="count-days">00</strong><span>Tage</span></div><b aria-hidden="true">:</b><div><strong id="count-hours">00</strong><span>Stunden</span></div><b aria-hidden="true">:</b><div><strong id="count-minutes">00</strong><span>Minuten</span></div><b aria-hidden="true">:</b><div><strong id="count-seconds">00</strong><span>Sekunden</span></div></div><p id="release-pending" hidden>Die Folge wird gerade freigeschaltet …</p></section>
       <div id="connection-note" class="notice" hidden></div>
-      <section class="library-section" aria-labelledby="library-title"><div class="section-heading"><h2 id="library-title">Alle Folgen <span id="episode-count">0</span></h2><button class="text-button" id="share-button"><span aria-hidden="true">▦</span> Link & QR-Code</button></div><div id="episodes" aria-live="polite"></div></section>
+      <section class="library-section" aria-labelledby="library-title"><div class="section-heading"><h2 id="library-title">Alle Folgen <span id="episode-count">0</span></h2></div><div id="episodes" aria-live="polite"></div></section>
       <div class="little-note"><span aria-hidden="true">✧</span><p>Manche Dinge sagt man am schönsten<br>mit einer Geschichte.</p></div>
     </section>
     <section id="studio" hidden>
@@ -50,7 +50,7 @@
           <div class="section-heading"><h2 id="editor-title">Ein neues Hörspiel</h2><span class="step-label">01 — AUFNAHME</span></div>
           <label class="dropzone" id="dropzone" for="audio-file"><span class="upload-symbol" aria-hidden="true">↑</span><strong id="file-name">Deine Geschichte beginnt hier</strong><span id="file-hint">MP3 hier ablegen oder Datei auswählen</span><small>MP3 · bis zu 50 MB</small><input id="audio-file" type="file" accept=".mp3,audio/mpeg" aria-label="MP3-Datei auswählen"></label>
           <audio id="upload-preview" controls preload="metadata" hidden aria-label="Ausgewählte Aufnahme probehören"></audio>
-          <label>Titel<input id="episode-title" maxlength="120" placeholder="Wie heißt deine Geschichte?" required></label>
+          <div class="series-fields"><label>Hörspiel / Playlist<input id="episode-series" list="series-options" maxlength="120" placeholder="Zum Beispiel: Reiterhof Funkelstein"><datalist id="series-options"></datalist><small>Vorhandene Reihe auswählen oder einen neuen Namen eingeben. Beim Speichern entsteht die Playlist.</small></label><label>Folgennummer<input id="episode-number" type="number" min="1" max="9999" step="1" required value="1"><small>Jedes Hörspiel beginnt bei Folge 1.</small></label></div><label>Titel<input id="episode-title" maxlength="120" placeholder="Wie heißt deine Geschichte?" required></label>
           <label>Ein paar persönliche Worte <span class="optional">optional</span><textarea id="episode-description" rows="3" maxlength="2000" placeholder="Für die Momente, in denen ich nicht neben dir sein kann …"></textarea></label>
           <div class="section-heading release-heading"><h3>Wann darf sie reinhören?</h3><span class="step-label">02 — VERÖFFENTLICHUNG</span></div>
           <fieldset class="release-options"><legend class="sr-only">Veröffentlichung auswählen</legend><label><input type="radio" name="release" value="now" checked><span><strong>Sofort</strong><small>Direkt in ihrer Hörbibliothek</small></span><span aria-hidden="true">↗</span></label><label><input type="radio" name="release" value="scheduled"><span><strong>Zu einem bestimmten Zeitpunkt</strong><small>Eine Überraschung für später</small></span><span aria-hidden="true">◷</span></label><label><input type="radio" name="release" value="draft"><span><strong>Als Entwurf behalten</strong><small>Nur in deinem Studio sichtbar</small></span><span aria-hidden="true">✎</span></label></fieldset>
