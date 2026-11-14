@@ -40,3 +40,13 @@ python3 -m http.server 4173
 Dann `http://localhost:4173` öffnen. Zum Ändern des Erscheinungsbilds `style.css`, für Texte und Struktur `index.html` bearbeiten. JavaScript hat keine Build-Abhängigkeiten.
 
 Die QR-Bibliothek `qrcode-generator` 1.4.4 von Kazuhiko Arase steht unter MIT; ihre Lizenz liegt in `LICENSE-qrcode.txt`. Schriftarten werden von Google Fonts geladen und haben lokale Ersatzschriften. Es werden keine Analyse- oder Werbedienste verwendet.
+
+## Kopfnuss (Quiz-Spiel)
+
+Im Ordner `quiz/` liegt ein eigenständiges Party-Quiz für 1 bis 4 Personen auf einem Bildschirm. Nach der Veröffentlichung ist es unter https://reaveexx.github.io/herzfrequenz/quiz/ erreichbar. Es berührt die Hörspiel-Seite nicht.
+
+- `quiz/questions.js`: Fragenkatalog. Neue Fragen als `["Frage?", "Richtig", "Falsch", "Falsch", "Falsch"]` eintragen.
+- `quiz/game.js`: Spielablauf. Oben in `SETTINGS` lassen sich Runden, Fragen pro Runde, Zeit und Gipfelhöhe ändern.
+- `quiz/style.css`: Aussehen.
+
+Lokal testen: im Ordner `quiz` `python3 -m http.server 4173` starten und `http://localhost:4173` öffnen.
