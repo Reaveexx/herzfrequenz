@@ -43,10 +43,22 @@ Die QR-Bibliothek `qrcode-generator` 1.4.4 von Kazuhiko Arase steht unter MIT; i
 
 ## Kopfnuss (Quiz-Spiel)
 
-Im Ordner `quiz/` liegt ein eigenständiges Party-Quiz für 1 bis 4 Personen auf einem Bildschirm. Nach der Veröffentlichung ist es unter https://reaveexx.github.io/herzfrequenz/quiz/ erreichbar. Es berührt die Hörspiel-Seite nicht.
+Im Ordner `quiz/` liegt ein eigenständiges Party-Quiz für 1 bis 4 Personen. Nach der Veröffentlichung ist es unter https://reaveexx.github.io/herzfrequenz/quiz/ erreichbar. Es berührt die Hörspiel-Seite nicht.
 
+**Zwei Spielarten**
+- **Ein Bildschirm:** Alle antworten am selben Gerät, per Tippen oder mit eigenen Tasten.
+- **Handys als Controller:** Der große Bildschirm (Fernseher, Laptop) zeigt einen QR-Code. Bis zu vier Leute scannen ihn, öffnen `quiz/controller.html` und spielen geheim am eigenen Handy. Die Fallen (Frost, Nebel, Kleckse …) erscheinen dann auf dem Handy der getroffenen Person.
+
+Die Handys sind über **Supabase Realtime** mit dem Bildschirm verbunden. Genutzt werden dieselbe Project-URL und derselbe anon-Schlüssel aus `config.js` wie bei der Hörspiel-Seite. Es wird nichts in der Datenbank gespeichert; die Nachrichten laufen nur live durch einen Kanal pro Raumcode. Ist das Supabase-Projekt pausiert, zeigt die Lobby „Keine Verbindung zum Server“. Dann im Supabase-Dashboard das Projekt wieder aktivieren.
+
+**Sprecherstimme:** Fragen, Rundenansagen und Ergebnisse werden mit der Sprachausgabe des Browsers vorgelesen (Web Speech API, ohne Server). Welche deutschen Stimmen es gibt, hängt vom Gerät ab; auf dem Startbildschirm lässt sich eine auswählen und probehören.
+
+**Dateien**
 - `quiz/questions.js`: Fragenkatalog. Neue Fragen als `["Frage?", "Richtig", "Falsch", "Falsch", "Falsch"]` eintragen.
-- `quiz/game.js`: Spielablauf. Oben in `SETTINGS` lassen sich Runden, Fragen pro Runde, Zeit und Gipfelhöhe ändern.
-- `quiz/style.css`: Aussehen.
+- `quiz/game.js`: Spielablauf am großen Bildschirm. Oben in `SETTINGS` lassen sich Runden, Fragen pro Runde, Zeit und Gipfelhöhe ändern.
+- `quiz/controller.html`, `quiz/controller.js`: Handy-Seite.
+- `quiz/pad.js`: Antwortfeld mit allen Fallen (Bildschirm und Handy).
+- `quiz/net.js`: Verbindung zwischen Bildschirm und Handys.
+- `quiz/common.js`, `quiz/style.css`: gemeinsame Bausteine und Aussehen.
 
-Lokal testen: im Ordner `quiz` `python3 -m http.server 4173` starten und `http://localhost:4173` öffnen.
+**Lokal testen:** Im Hauptordner `python3 -m http.server 4173` starten und `http://localhost:4173/quiz/` öffnen. Mit `http://localhost:4173/quiz/?lokal` läuft der Handy-Modus ohne Server: Dann den Link aus der Lobby in weiteren Tabs desselben Browsers öffnen, jeder Tab spielt ein Handy.
