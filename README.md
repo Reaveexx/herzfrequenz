@@ -51,12 +51,17 @@ Im Ordner `quiz/` liegt ein eigenständiges Party-Quiz für 1 bis 4 Personen. Na
 
 Die Handys sind über **Supabase Realtime** mit dem Bildschirm verbunden. Genutzt werden dieselbe Project-URL und derselbe anon-Schlüssel aus `config.js` wie bei der Hörspiel-Seite. Es wird nichts in der Datenbank gespeichert; die Nachrichten laufen nur live durch einen Kanal pro Raumcode. Ist das Supabase-Projekt pausiert, zeigt die Lobby „Keine Verbindung zum Server“. Dann im Supabase-Dashboard das Projekt wieder aktivieren.
 
+**3D-Bühne mit Spielfiguren:** Am großen Bildschirm stehen die Figuren der Spieler auf einer Studio-Bühne vor vier Antwortfeldern. Wer sich eingeloggt hat, hüpft. Bei der Auflösung laufen alle auf das Feld ihrer Antwort, die Kamera fährt mit, das richtige Feld leuchtet grün. Im Finale klettern die Figuren eine Treppe hoch, am Ende gibt es ein Siegerpodest. Die Bühne nutzt three.js (r128, von cdnjs) und steckt in `quiz/stage.js`. Ohne WebGL zeigt das Spiel automatisch die 2D-Ansicht.
+
+**Handy im Querformat:** Die Frage steht nur auf dem Fernseher, das Handy zeigt die vier Antworten als große Knöpfe nebeneinander. Hält jemand das Handy hochkant, erscheint ein Hinweis zum Drehen; auf Android kann „Vollbild quer“ die Drehung auch festhalten.
+
 **Sprecherstimme:** Fragen, Rundenansagen und Ergebnisse werden mit der Sprachausgabe des Browsers vorgelesen (Web Speech API, ohne Server). Welche deutschen Stimmen es gibt, hängt vom Gerät ab; auf dem Startbildschirm lässt sich eine auswählen und probehören.
 
 **Dateien**
 - `quiz/questions.js`: Fragenkatalog. Neue Fragen als `["Frage?", "Richtig", "Falsch", "Falsch", "Falsch"]` eintragen.
 - `quiz/game.js`: Spielablauf am großen Bildschirm. Oben in `SETTINGS` lassen sich Runden, Fragen pro Runde, Zeit und Gipfelhöhe ändern.
 - `quiz/controller.html`, `quiz/controller.js`: Handy-Seite.
+- `quiz/stage.js`: 3D-Bühne mit den Spielfiguren.
 - `quiz/pad.js`: Antwortfeld mit allen Fallen (Bildschirm und Handy).
 - `quiz/net.js`: Verbindung zwischen Bildschirm und Handys.
 - `quiz/common.js`, `quiz/style.css`: gemeinsame Bausteine und Aussehen.

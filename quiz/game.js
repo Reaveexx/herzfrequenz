@@ -281,6 +281,10 @@ function introScreen({ kicker, title, text, speak }) {
   return waitContinue($('#go'), () => ({ k: 'wait', title: kicker, text: title }));
 }
 
+const figId = p => p.cid || 'p' + p.id;
+const figList = () => S.players.map(p => ({ id: figId(p), name: p.name, color: p.color }));
+const climbSteps = () => Object.fromEntries(S.players.map(p => [figId(p), p.climb]));
+
 const playerChip = p => `<span class="pchip" style="--pc:${p.color}">${esc(p.name)}</span>`;
 const cardKey = (p, i) => S.remote ? '' : `<kbd style="--pc:${p.color}">${keyLabel(p.keys[i])}</kbd>`;
 
@@ -447,9 +451,10 @@ async function questionPhase(q, opts) {
         <span class="label cat">${esc(q.cat)}</span>
         ${opts.mult > 1 ? `<span class="label mult">× ${opts.mult} Punkte</span>` : ''}
       </header>
-      ${opts.climb ? climbTrack() : ''}
+      ${opts.climb && !Stage.ok ? climbTrack() : ''}
       <h2 class="question">${esc(q.text)}</h2>
-      ${remote ? `<div class="tv-answers waiting">${baseOrder.map(a => `<div class="tv-ans" data-a="${a}">${esc(q.answers[a])}</div>`).join('')}</div>` : ''}
+      ${Stage.ok ? `<div class="stage-wrap ${remote ? 'stage-big' : 'stage-small'}" id="stage"></div>` : ''}
+      ${remote && (!Stage.ok || opts.climb) ? `<div class="tv-answers waiting">${baseOrder.map(a => `<div class="tv-ans" data-a="${a}">${esc(q.answers[a])}</div>`).join('')}</div>` : ''}
       <div class="timer" aria-hidden="true"><div class="timer-fill"></div></div>
       <div class="panels panels-${n} ${remote ? 'panels-remote' : ''}">
         ${st.map((s, i) => `
@@ -473,10 +478,24 @@ async function questionPhase(q, opts) {
     if (el) { el.textContent = text; el.className = 'pstatus ' + cls; }
   };
 
-  // Erst vorlesen, dann geht die Zeit los
-  Remote.setAll(() => ({ k: 'wait', title: 'Hör gut zu …', text: q.text }));
+  const answerTexts = baseOrder.map(a => q.answers[a]);
+  const fxNames = s => s.fx.map(f => SABOTAGES[f].name);
+  if (Stage.ok) {
+    Stage.mount($('#stage'));
+    Stage.setPlayers(figList());
+    Stage.setAnswers(null);
+    Stage.layout(opts.climb ? 'climb' : 'question', { steps: climbSteps(), summit: SETTINGS.summit });
+    st.forEach(s => Stage.setLabel(figId(s.p), { status: 'hört zu', fx: fxNames(s) }));
+  }
+
+  // Erst vorlesen, dann geht die Zeit los. Die Frage steht nur auf dem Fernseher.
+  Remote.setAll(() => ({ k: 'wait', title: 'Hör gut zu …', text: 'Die Frage steht auf dem Fernseher.' }));
   if (Voice.on && Voice.supported) await Voice.say(q.text);
   else await wait(900);
+  if (Stage.ok) {
+    if (remote && !opts.climb) Stage.setAnswers(answerTexts);
+    st.forEach(s => { Stage.setLabel(figId(s.p), { status: 'überlegt …', fx: fxNames(s) }); Stage.mood(figId(s.p), 'think'); });
+  }
 
   const start = performance.now();
   let raf = 0, finished = false, lastTick = -1;
@@ -490,6 +509,9 @@ async function questionPhase(q, opts) {
     if (el > s.deadline) return;
     s.done = true; s.choice = answer; s.at = el;
     Sound.lock();
+    Stage.lock(figId(s.p));
+    Stage.mood(figId(s.p), 'idle');
+    Stage.setLabel(figId(s.p), { status: 'eingeloggt', fx: [] });
     if (remote) {
       setStatus(i, 'Eingeloggt', 'is-locked');
       panels[i].classList.add('locked');
@@ -501,10 +523,11 @@ async function questionPhase(q, opts) {
   }
 
   if (remote) {
-    $('.tv-answers').classList.remove('waiting');
+    const tvAnswers = $('.tv-answers');
+    if (tvAnswers) tvAnswers.classList.remove('waiting');
     st.forEach((s, i) => {
       setStatus(i, 'Überlegt …');
-      Remote.setView(s.p, { k: 'q', text: q.text, answers: q.answers, order: s.order, fx: s.fx, limit: s.deadline, total: limit });
+      Remote.setView(s.p, { k: 'q', answers: q.answers, order: s.order, fx: s.fx, limit: s.deadline, total: limit });
     });
   } else {
     st.forEach((s, i) => {
@@ -532,6 +555,8 @@ async function questionPhase(q, opts) {
       if (s.fx.includes('zeitdieb')) { const b = $('.ptimer div', panels[i]); if (b) b.style.transform = `scaleX(${Math.max(0, 1 - el / s.deadline)})`; }
       if (!s.done && el >= s.deadline) {
         s.done = true;
+        Stage.setLabel(figId(s.p), { status: 'Zeit um', fx: [] });
+        Stage.mood(figId(s.p), 'sad');
         if (s.pad) s.pad.lock('Zeit um');
         else {
           setStatus(i, 'Zeit um', 'is-late');
@@ -554,6 +579,12 @@ async function questionPhase(q, opts) {
   }
 
   async function reveal() {
+    if (Stage.ok && !opts.climb) {
+      Stage.setAnswers(answerTexts);
+      st.forEach(s => Stage.setLabel(figId(s.p), { status: '', fx: [] }));
+      await Stage.walkToPads(st.filter(s => s.choice !== null).map(s => ({ id: figId(s.p), pad: baseOrder.indexOf(s.choice) })));
+      await wait(350);
+    }
     st.forEach((s, i) => {
       panels[i].classList.add('revealed');
       if (s.pad) s.pad.reveal(q.correct, s.choice);
@@ -595,7 +626,19 @@ async function questionPhase(q, opts) {
       $('.ptop', panel).insertBefore(pop, scoreEl);
       if (remote) setStatus(i, r.answered ? q.answers[r.choice] : 'Keine Antwort', r.correct ? 'is-right' : 'is-wrong');
     });
-    if (opts.climb) { $('.climb').outerHTML = climbTrack(); Sound.climb(); }
+    if (Stage.ok) {
+      if (opts.climb) {
+        Stage.climb(climbSteps());
+        results.forEach(r => {
+          Stage.mood(figId(r.p), r.correct ? 'cheer' : r.answered ? 'sad' : 'idle');
+          Stage.pop(figId(r.p), r.move > 0 ? '+' + r.move : r.move < 0 ? '−1' : '±0', r.correct);
+        });
+      } else {
+        Stage.reveal(baseOrder.indexOf(q.correct), results.map(r => ({ id: figId(r.p), correct: r.correct })));
+        results.forEach(r => Stage.pop(figId(r.p), r.correct ? '+' + r.pts : r.answered ? 'Falsch' : 'Keine Antwort', r.correct));
+      }
+    }
+    if (opts.climb) { const track = $('.climb'); if (track) track.outerHTML = climbTrack(); Sound.climb(); }
 
     // Kommentar vom Sprecher
     const answerText = q.answers[q.correct];
@@ -661,10 +704,15 @@ async function finale() {
       <p class="kicker">Finale</p>
       <h1 class="intro-title">Gipfelsturm</h1>
       <p class="intro-text">Wer zuerst Stufe ${SETTINGS.summit} erreicht, gewinnt. Richtig bringt eine Stufe, die schnellste richtige Antwort zwei. Wer falsch antwortet, rutscht eine Stufe ab.</p>
-      ${climbTrack()}
+      ${Stage.ok ? '<div class="stage-wrap stage-intro" id="stage"></div>' : climbTrack()}
       <p class="intro-text small">${n > 1 ? `Startplätze nach Punkten: ${ranked.map(p => `${esc(p.name)} Stufe ${p.climb}`).join(' · ')}` : 'Schaffst du es nach oben?'}</p>
       <button class="btn btn-go" id="go">Los <kbd>Enter</kbd></button>
     </div>`, 'is-intro');
+  if (Stage.ok) {
+    Stage.mount($('#stage'));
+    Stage.setPlayers(figList());
+    Stage.layout('climb', { steps: climbSteps(), summit: SETTINGS.summit });
+  }
   Voice.say('Das Finale. Gipfelsturm! Wer zuerst oben ist, gewinnt.');
   await waitContinue($('#go'), p => ({ k: 'wait', title: 'Gipfelsturm', text: `Du startest auf Stufe ${p.climb}.` }));
 
@@ -687,6 +735,7 @@ function winner() {
       <canvas id="confetti" aria-hidden="true"></canvas>
       <p class="kicker">Gipfel erreicht</p>
       <h1 class="intro-title winner-name" style="--pc:${champ.color}">${esc(champ.name)}</h1>
+      ${Stage.ok ? '<div class="stage-wrap stage-podium" id="stage"></div>' : ''}
       <p class="intro-text">${S.players.length > 1 ? 'gewinnt Kopfnuss!' : `Geschafft. ${champ.correctCount} richtige Antworten in der Vorrunde.`}</p>
       <ol class="ranking">${ps.map((p, i) => `
         <li style="--pc:${p.color}">
@@ -700,6 +749,11 @@ function winner() {
         <button class="btn btn-ghost" id="setup">${S.remote ? 'Zurück zur Lobby' : 'Neue Spielrunde einrichten'}</button>
       </div>
     </div>`, 'is-final');
+  if (Stage.ok) {
+    Stage.mount($('#stage'));
+    Stage.setPlayers(figList());
+    Stage.layout('podium', { ranks: ps.map(figId) });
+  }
   Voice.say(S.players.length > 1 ? `${champ.name} gewinnt Kopfnuss! Herzlichen Glückwunsch.` : 'Gipfel erreicht. Glückwunsch!');
   Remote.setAll(p => ({
     k: 'wait',
@@ -860,6 +914,7 @@ function lobbyScreen() {
       <section class="lobby-side">
         <h2 class="choose-title">Wer ist dabei?</h2>
         <p class="net-status" id="net"></p>
+        ${Stage.ok ? '<div class="stage-wrap stage-lobby" id="stage"></div>' : ''}
         <ul class="lobby-list" id="list"></ul>
         <div class="btn-row">
           <button class="btn btn-go" id="start" disabled>Spiel starten</button>
@@ -890,8 +945,15 @@ function lobbyScreen() {
     $$('#list .remove').forEach(b => b.addEventListener('click', () => Remote.remove(b.dataset.cid)));
     $('#start').disabled = !Remote.clients.length;
   };
-  Remote.onChange = render;
-  render();
+  Remote.onChange = () => {
+    render();
+    if (Stage.ok) {
+      Stage.setPlayers(Remote.clients.map(c => ({ id: c.cid, name: c.name, color: c.color })));
+      Stage.layout('lobby');
+    }
+  };
+  if (Stage.ok) Stage.mount($('#stage'));
+  Remote.onChange();
 
   $('#start').addEventListener('click', () => {
     Sound.click();

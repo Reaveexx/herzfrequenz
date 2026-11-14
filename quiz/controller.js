@@ -15,6 +15,16 @@ const cid = (() => {
 let conn = null, me = null, viewId = null, pending = null, netStatus = 'idle', lastState = 0;
 let pad = null, raf = 0, wakeLock = null;
 
+/* ---------- Querformat ---------- */
+function goLandscape() {
+  const el = document.documentElement;
+  const lock = () => { try { const o = screen.orientation; if (o && o.lock) return o.lock('landscape').catch(() => {}); } catch { /* egal */ } };
+  if (el.requestFullscreen && !document.fullscreenElement) el.requestFullscreen({ navigationUI: 'hide' }).then(lock).catch(() => {});
+  else lock();
+}
+$('#rotate-ok').addEventListener('click', () => { document.body.classList.add('allow-portrait'); });
+$('#rotate-full').addEventListener('click', goLandscape);
+
 /* ---------- Grundgerüst ---------- */
 function frame(body, { head = true } = {}) {
   cancelAnimationFrame(raf);
@@ -98,13 +108,14 @@ function onMessage(m) {
   lastState = Date.now();
   const found = (m.players || []).find(p => p.cid === cid);
   if (!found) {
-    if (me) { me = null; viewId = null; info('Du wurdest entfernt', 'Frag am großen Bildschirm nach, ob du wieder mitspielen kannst.'); return; }
+    if (me) { me = null; viewId = null; document.body.classList.remove('joined'); info('Du wurdest entfernt', 'Frag am großen Bildschirm nach, ob du wieder mitspielen kannst.'); return; }
     if (!m.open) info('Das Spiel läuft schon', 'Warte, bis die Runde vorbei ist und alle zurück in der Lobby sind.');
     else if ((m.players || []).length >= 4) info('Der Raum ist voll', 'Es können höchstens vier Leute mitspielen.');
     return;
   }
   const wasNew = !me;
   me = found;
+  document.body.classList.add('joined');
   document.documentElement.style.setProperty('--pc', me.color);
   const v = m.views && m.views[cid];
   if (!v) return;
@@ -138,9 +149,13 @@ function render(v) {
       <div class="ph-wait">
         <p class="kicker">Du bist dabei</p>
         <h2 class="ph-title ph-name">${esc(me.name)}</h2>
-        <p class="ph-text">Warte, bis das Spiel am großen Bildschirm startet.</p>
-        <button class="btn btn-ghost" id="rename">Namen ändern</button>
+        <p class="ph-text">Warte, bis das Spiel am großen Bildschirm startet. Halte dein Handy quer.</p>
+        <div class="btn-row">
+          ${document.documentElement.requestFullscreen ? '<button class="btn btn-go" id="full">Vollbild</button>' : ''}
+          <button class="btn btn-ghost" id="rename">Namen ändern</button>
+        </div>
       </div>`);
+    const full = $('#full'); if (full) full.addEventListener('click', goLandscape);
     $('#rename').addEventListener('click', () => { if (conn) conn.close(); conn = null; me = null; joinScreen(); });
     return;
   }
@@ -182,11 +197,12 @@ function render(v) {
     if (navigator.vibrate) navigator.vibrate(60);
     const body = frame(`
       <div class="ph-q">
-        <p class="ph-question">${esc(v.text)}</p>
-        ${v.fx && v.fx.length ? `<div class="fxbar">${v.fx.map(f => `<span class="fx">${icon(f)}${esc(SABOTAGES[f] ? SABOTAGES[f].name : f)}</span>`).join('')}</div>` : ''}
-        <div class="timer ph-timer"><div class="timer-fill"></div></div>
+        <div class="ph-qtop">
+          <div class="timer ph-timer"><div class="timer-fill"></div></div>
+          ${v.fx && v.fx.length ? `<div class="fxbar">${v.fx.map(f => `<span class="fx">${icon(f)}${esc(SABOTAGES[f] ? SABOTAGES[f].name : f)}</span>`).join('')}</div>` : ''}
+        </div>
         <div class="answer-zone ph-zone"></div>
-      </div>`);
+      </div>`, { head: false });
     const root = $('.ph-q', body);
     pad = createPad({
       root, zone: $('.ph-zone', body), answers: v.answers, order: v.order, fx: v.fx || [], limit: v.total || v.limit,
