@@ -912,3 +912,8 @@ kbd {
 .vote-chips i { width: 16px; height: 16px; border-radius: 50%; background: var(--pc); border: 2.5px solid var(--ink); }
 .tv-ans b { font-family: var(--display, inherit); margin-right: .3em; }
 .tv-ans.hot { background-color: var(--zing); transform: scale(1.04) rotate(-1deg); }
+
+/* Saallicht aus: Die Leisten treten zurück, solange der Zufallsstern springt */
+.hud-bottom { transition: filter .5s, opacity .5s; }
+.lights-down .hud-bottom { filter: brightness(.45) saturate(.7); }
+.lights-down .fig-tag { filter: brightness(.75); }

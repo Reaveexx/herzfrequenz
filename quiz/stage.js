@@ -24,7 +24,7 @@ const Stage = (() => {
   const T = window.THREE;
   const noop = () => {};
   const done = () => Promise.resolve();
-  const fallback = { ok: false, mount: noop, setPlayers: noop, setInsets: noop, setDoors: noop, pointDoor: noop, voteWalk: done, openDoor: done, enterDoor: done, layout: done, setLabel: noop, setAnswers: noop, lock: noop, walkToPads: done, reveal: noop, pop: noop, climb: done, mood: noop };
+  const fallback = { ok: false, mount: noop, setPlayers: noop, setInsets: noop, setDoors: noop, pointDoor: noop, dim: noop, voteWalk: done, openDoor: done, enterDoor: done, layout: done, setLabel: noop, setAnswers: noop, lock: noop, walkToPads: done, reveal: noop, pop: noop, climb: done, mood: noop };
   if (!T) return fallback;
 
   let renderer;
@@ -512,6 +512,7 @@ const Stage = (() => {
     outside.side = T.FrontSide; inside.side = T.BackSide;
     hinge.add(new T.Mesh(leafGeo, outside), new T.Mesh(leafGeo, inside));
     grp.add(back, frame, hinge);
+    grp.userData.door = i;
     doorGroup.add(grp);
     d.grp = grp; d.hinge = hinge; d.frame = frame;
     drawDoorFrame(d); drawDoorLeaf(d);
@@ -535,11 +536,12 @@ const Stage = (() => {
     doorGroup.add(o);
     return o;
   })();
-  let pointerT = -9;
+  let pointerT = -9, hotDoor = -1;
   /* Zeigt auf eine Tür (Index) oder blendet den Zeiger aus (null). */
   function pointDoor(door) {
     const d = door === null ? null : doors[door];
     pointer.visible = !!d;
+    hotDoor = d ? d.i : -1;
     if (!d) return;
     pointer.position.x = d.x;
     pointerT = now();
@@ -864,6 +866,7 @@ const Stage = (() => {
     card.add(new T.Mesh(figGeo, frontM));
     const shadow = new T.Mesh(shadowGeo, new T.MeshBasicMaterial({ map: shadowT, transparent: true, depthWrite: false }));
     shadow.renderOrder = -1;
+    g.userData.fig = true;
     scene.add(g, shadow);
     const label = document.createElement('div');
     label.className = 'fig-label';
@@ -951,6 +954,26 @@ const Stage = (() => {
     goal.oy = (fy0 + fy1) / 2 - (bb[2] + bb[3]) / 2;
   }
 
+  /* ---------- Saallicht ---------- */
+  // Die Kulissen sind unbeleuchtet gemalt. Zum Abdunkeln werden ihre Farben gedämpft.
+  // Der Zufallsstern und die Tür, auf die er zeigt, bleiben hell, die Figuren halb hell.
+  const bgBase = scene.background.clone();
+  let light = 1, lightGoal = 1, lightShown = 1, hotShown = -1;
+  function paintLight(o, k) {
+    if (o === pointer) k = 1;
+    else if (o.userData.door !== undefined) k = o.userData.door === hotDoor ? 1 : 1 - (1 - light) * 0.75;
+    else if (o.userData.fig) k = 1 - (1 - light) * 0.4;
+    const m = o.material;
+    if (m) (Array.isArray(m) ? m : [m]).forEach(x => {
+      if (!x.color) return;
+      if (!x.userData.base) x.userData.base = x.color.clone();
+      x.color.copy(x.userData.base).multiplyScalar(k);
+    });
+    for (const c of o.children) paintLight(c, k);
+  }
+  /* Bühnenlicht herunterdrehen (true) oder wieder hochfahren (false). */
+  function dim(on) { lightGoal = on ? 0.28 : 1; }
+
   /* ---------- Öffentliche Befehle ---------- */
   let host = null;
   const ro = 'ResizeObserver' in window ? new ResizeObserver(() => resize()) : null;
@@ -978,6 +1001,7 @@ const Stage = (() => {
 
   function layout(m, opts = {}) {
     mode = m; shot = m;
+    lightGoal = 1;
     if (opts.summit) buildStairs(opts.summit);
     else if (m === 'climb' && !STEPS) buildStairs(lastSummit);
     padGroup.visible = m === 'question';
@@ -1028,7 +1052,7 @@ const Stage = (() => {
 
   /* names: bis zu vier Kategorien. Überzählige Türen verschwinden. */
   function setDoors(names) {
-    pointer.visible = false;
+    pointer.visible = false; hotDoor = -1;
     doors.forEach((d, i) => {
       d.grp.visible = i < names.length;
       d.text = names[i] || ''; d.state = ''; d.open = 0; d.openGoal = 0; d.bounce = now() + i * 0.08;
@@ -1045,7 +1069,7 @@ const Stage = (() => {
   }
   /* Gewinner-Tür leuchtet und schwingt auf, die anderen werden grau. */
   function openDoor(door) {
-    pointer.visible = false;
+    pointer.visible = false; hotDoor = -1;
     doors.forEach((d, i) => {
       d.state = i === door ? 'won' : 'lost';
       if (i === door) { d.openGoal = 1; d.bounce = now(); }
@@ -1238,6 +1262,13 @@ const Stage = (() => {
       });
     }
     figs.forEach(f => updateFig(f, t, dt));
+    light += (lightGoal - light) * Math.min(1, dt * 3.2);
+    if (Math.abs(light - lightGoal) < 0.004 || calm) light = lightGoal;
+    if (light !== lightShown || hotDoor !== hotShown) {
+      lightShown = light; hotShown = hotDoor;
+      scene.background.copy(bgBase).multiplyScalar(light);
+      paintLight(scene, light);
+    }
     renderer.render(scene, camera);
   }
   requestAnimationFrame(tick);
@@ -1252,5 +1283,5 @@ const Stage = (() => {
     }).catch(noop);
   }
 
-  return { ok: true, mount, setPlayers, setInsets, setDoors, pointDoor, voteWalk, openDoor, enterDoor, layout, setLabel, setAnswers, lock, walkToPads, reveal, pop, climb, mood };
+  return { ok: true, mount, setPlayers, setInsets, setDoors, pointDoor, dim, voteWalk, openDoor, enterDoor, layout, setLabel, setAnswers, lock, walkToPads, reveal, pop, climb, mood };
 })();

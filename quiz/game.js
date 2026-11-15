@@ -8,7 +8,9 @@ const SETTINGS = {
   finaleTime: 12,     // Sekunden pro Frage im Finale
   summit: 10,         // Stufen bis zum Gipfel
   finaleMax: 25,      // Notbremse: so viele Finalfragen höchstens
-  voteTime: 12        // Sekunden für die Abstimmung über die Kategorie
+  voteTime: 12,       // Sekunden für die Abstimmung über die Kategorie
+  spinStart: 300,     // Zufallsstern bei Gleichstand: Pause zwischen den ersten Sprüngen (Millisekunden)
+  spinEnd: 900        // … und zwischen den letzten, wenn er ausläuft
 };
 
 const KEYSETS = [['1', '2', '3', '4'], ['7', '8', '9', '0'], ['a', 's', 'd', 'f'], ['h', 'j', 'k', 'l']];
@@ -636,20 +638,25 @@ async function categoryPhase(round, q) {
   if (lottery) {
     $('.question').textContent = most > 0 ? 'Gleichstand! Der Zufall entscheidet …' : 'Keine Stimme! Der Zufall entscheidet …';
     Voice.say(line(most > 0 ? 'voteSpin' : 'voteNone'), { emote: 'hm' });
-    await wait(Voice.on ? 1300 : 400);
+    // Saallicht runter, damit der Stern leuchtet
+    Stage.dim(true);
+    app.classList.add('lights-down');
+    await wait(Voice.on ? 1500 : 900);
     const cards = $$('.tv-ans');
-    const rounds = tied.length <= 2 ? 5 : 3;
+    const rounds = tied.length <= 2 ? 3 : 2;
     const total = rounds * tied.length + tied.indexOf(winner);   // der letzte Sprung landet auf dem Gewinner
-    let delay = 95;
+    let delay = SETTINGS.spinStart;
     for (let step = 0; step <= total; step++) {
       const door = tied[step % tied.length];
       Stage.pointDoor(door);
       cards.forEach(el => el.classList.toggle('hot', +el.dataset.a === door));
-      if (step < total) { Sound.hop(step); await wait(delay); delay = Math.min(560, delay * (step >= total - 6 ? 1.3 : 1.05)); }
+      if (step < total) { Sound.hop(step); await wait(delay); delay = Math.min(SETTINGS.spinEnd, delay * (step >= total - 5 ? 1.24 : 1.05)); }
     }
     Sound.landed();
-    await wait(650);
+    await wait(1100);
     cards.forEach(el => el.classList.remove('hot'));
+    Stage.dim(false);
+    app.classList.remove('lights-down');
   } else Sound.good();
 
   $('.question').textContent = cat;
