@@ -24,7 +24,7 @@ const Stage = (() => {
   const T = window.THREE;
   const noop = () => {};
   const done = () => Promise.resolve();
-  const fallback = { ok: false, mount: noop, setPlayers: noop, setInsets: noop, layout: done, setLabel: noop, setAnswers: noop, lock: noop, walkToPads: done, reveal: noop, pop: noop, climb: done, mood: noop };
+  const fallback = { ok: false, mount: noop, setPlayers: noop, setInsets: noop, setDoors: noop, voteWalk: done, openDoor: done, enterDoor: done, layout: done, setLabel: noop, setAnswers: noop, lock: noop, walkToPads: done, reveal: noop, pop: noop, climb: done, mood: noop };
   if (!T) return fallback;
 
   let renderer;
@@ -443,6 +443,81 @@ const Stage = (() => {
     return p;
   });
 
+  /* ---------- Türen für die Kategorie-Abstimmung ---------- */
+  // Vier Papptüren mit Schild. Die Figuren stellen sich vor ihre Wahl, die Gewinner-Tür
+  // schwingt auf und alle laufen hindurch.
+  const DOOR_Z = -3.1;   // Farben: DOOR_COLORS aus common.js
+  const doorGroup = new T.Group();
+  doorGroup.visible = false;
+  scene.add(doorGroup);
+  const darkC = (() => {
+    const [c, g] = mk(256, 384), r = rnd(31);
+    g.fillStyle = '#15102b'; g.fillRect(0, 0, 256, 384);
+    halftone(g, 0, 0, 256, 384, 18, '#2b2350', (x, y) => 1 - y / 300);
+    g.fillStyle = SUN;
+    for (let i = 0; i < 9; i++) { g.beginPath(); g.arc(20 + r() * 216, 20 + r() * 300, 2 + r() * 4, 0, 7); g.fill(); }
+    return c;
+  })();
+  function drawDoorFrame(d) {
+    const g = d.frameG, r = rnd(80 + d.i);
+    g.clearRect(0, 0, 600, 920);
+    // Rahmen aus Pappe
+    box(g, 62, 262, 476, 652, r, 7); g.fillStyle = d.state === 'lost' ? '#b9a98e' : CARD; g.fill();
+    g.save(); g.clip(); halftone(g, 62, 262, 538, 914, 15, CARD_D, (x, y) => (x - 200) / 500 + (y - 500) / 900); g.restore();
+    box(g, 62, 262, 476, 652, rnd(80 + d.i), 7); ink(g, 9);
+    // Durchgang ausschneiden
+    g.save(); g.globalCompositeOperation = 'destination-out'; g.fillRect(100, 302, 400, 618); g.restore();
+    g.strokeStyle = INK; g.lineWidth = 9; g.strokeRect(100, 302, 400, 630);
+    // Schild mit der Kategorie
+    const fill = d.state === 'won' ? GOOD : d.state === 'lost' ? '#e4d9c8' : PAPER;
+    g.save(); g.translate(300, 130); g.rotate([-.025, .02, -.015, .028][d.i]); g.translate(-300, -130);
+    box(g, 22, 22, 556, 216, r, 9); g.save(); g.shadowColor = INK; g.shadowOffsetX = 8; g.shadowOffsetY = 10; g.fillStyle = fill; g.fill(); g.restore();
+    g.save(); g.clip(); halftone(g, 22, 22, 578, 238, 16, d.state === 'won' ? '#27a96d' : d.state === 'lost' ? '#cfc2ab' : '#f6e7bf', (x, y) => (x - 300) / 420 + (y - 150) / 200); g.restore();
+    box(g, 22, 22, 556, 216, rnd(80 + d.i), 9); ink(g, 9);
+    fitText(g, d.text || '?', 300, 132, 500, 176, 96, d.state === 'lost' ? '#6d6478' : INK);
+    g.restore();
+    grain(g, 600, 920);
+    d.frameT.needsUpdate = true;
+  }
+  function drawDoorLeaf(d) { paintLeaf(d, d.leafG, true); d.leafT.needsUpdate = true; paintLeaf(d, d.backG, false); d.backT.needsUpdate = true; }
+  function paintLeaf(d, g, front) {
+    const r = rnd(90 + d.i), col = d.state === 'lost' ? '#9a93a8' : DOOR_COLORS[d.i];
+    g.clearRect(0, 0, 400, 620);
+    box(g, 8, 8, 384, 604, r, 5); g.fillStyle = col; g.fill();
+    g.save(); g.clip(); halftone(g, 0, 0, 400, 620, 15, shade(col, .78), (x, y) => (x - 120) / 420 + (y - 250) / 700); g.restore();
+    box(g, 8, 8, 384, 604, rnd(90 + d.i), 5); ink(g, 9);
+    // zwei Füllungen und ein Knauf
+    [[48, 48, 304, 200], [48, 372, 304, 200]].forEach(([x, y, w, h]) => { box(g, x, y, w, h, r, 5); g.fillStyle = shade(col, 1.18); g.fill(); ink(g, 6); });
+    g.beginPath(); g.arc(d.i >= 2 ? 64 : 336, 316, 20, 0, 7); g.fillStyle = SUN; g.fill(); ink(g, 6);
+    if (front) {   // Türnummer nur außen
+      g.beginPath(); g.arc(200, 148, 66, 0, 7); g.fillStyle = PAPER; g.fill(); ink(g, 7);
+      fitText(g, String(d.i + 1), 200, 150, 110, 110, 104, INK);
+    }
+    grain(g, 400, 620);
+  }
+  const doors = PAD_X.map((x, i) => {
+    const [frameC, frameG] = mk(600, 920), [leafC, leafG] = mk(400, 620), [backC, backG] = mk(400, 620);
+    const d = { i, x, frameG, frameT: tex(frameC), leafG, leafT: tex(leafC), backG, backT: tex(backC), text: '', state: '', open: 0, openGoal: 0, bounce: -9 };
+    const grp = new T.Group();
+    grp.position.set(x, 0, DOOR_Z);
+    const back = new T.Mesh(new T.PlaneGeometry(2.16, 3.15).translate(0, 1.575, 0), cutMat(tex(darkC)));
+    back.position.z = -0.3;
+    const frame = new T.Mesh(new T.PlaneGeometry(3, 4.6).translate(0, 2.3, 0), cutMat(d.frameT));
+    const hinge = new T.Group();
+    const side = i >= 2 ? 1 : -1;
+    hinge.position.set(side, 0, 0.03);
+    const leafGeo = new T.PlaneGeometry(2, 3.1).translate(-side, 1.55, 0);
+    d.side = side;
+    const outside = cutMat(d.leafT), inside = cutMat(d.backT);
+    outside.side = T.FrontSide; inside.side = T.BackSide;
+    hinge.add(new T.Mesh(leafGeo, outside), new T.Mesh(leafGeo, inside));
+    grp.add(back, frame, hinge);
+    doorGroup.add(grp);
+    d.grp = grp; d.hinge = hinge; d.frame = frame;
+    drawDoorFrame(d); drawDoorLeaf(d);
+    return d;
+  });
+
   /* ---------- Treppe fürs Finale ---------- */
   // Die Treppe passt sich an die Gipfelhöhe aus SETTINGS.summit an
   let STEPS = 0, stepW = 1.4, rise = 0.32, lastSummit = 10;
@@ -768,7 +843,7 @@ const Stage = (() => {
     const tag = document.createElement('div');
     tag.className = 'fig-tag';
     labels.append(label, tag);
-    return { id: p.id, style: index % 4, color: p.color, g, card, layers, frontM, shadow, label, tag, shown: '', pos: new T.Vector3(0, 9, 3), fresh: true, face: 1, faceGoal: 1, walk: null, mood: 'idle', jumpT: -9, phase: Math.random() * 6, blinkAt: now() + 1 + Math.random() * 3, pops: [] };
+    return { id: p.id, style: index % 4, color: p.color, g, card, layers, frontM, shadow, label, tag, shown: '', pos: new T.Vector3(0, 9, 3), fresh: true, face: 1, faceGoal: 1, walk: null, gone: false, mood: 'idle', jumpT: -9, phase: Math.random() * 6, blinkAt: now() + 1 + Math.random() * 3, pops: [] };
   }
 
   function setPlayers(list) {
@@ -803,6 +878,7 @@ const Stage = (() => {
   const SHOTS = {
     question: { look: [0, 1.4, 0], elev: 25, pts: [[-7.5, 3.75, SIGN_Z], [7.5, 3.75, SIGN_Z], [-7.3, 0, -0.1], [7.3, 0, -0.1], [-5.4, -0.5, 2.6], [5.4, -0.5, 2.6]] },
     reveal: { look: [0, 1.4, -1], elev: 20, pts: [[-7.5, 3.8, SIGN_Z], [7.5, 3.8, SIGN_Z], [-7.4, -0.35, 0.1], [7.4, -0.35, 0.1]] },
+    doors: { look: [0, 1.9, -0.6], elev: 17, pts: [[-7.3, 4.75, DOOR_Z], [7.3, 4.75, DOOR_Z], [-7.3, 0, -0.1], [7.3, 0, -0.1], [-5.4, -0.5, 2.6], [5.4, -0.5, 2.6]] },
     lobby: { look: [0, 1.1, 0.6], elev: 9, pts: [[-4.8, -0.55, 0.6], [4.8, -0.55, 0.6], [-4.8, 3, 0.6], [4.8, 3, 0.6]] },
     climb: { look: [0, 2.4, 0], elev: 11, pts: [[-8.1, -0.45, 1.05], [8.4, -0.45, 1.05], [-8.1, 2.7, -0.2], [8.6, 6.4, -1.2]] },
     podium: { look: [0, 1.6, 0], elev: 8, pts: [[-6.1, -0.5, 0.9], [6.1, -0.5, 0.9], [0, 4.6, 0], [-4, 3.6, 0], [4, 3.6, 0]] }
@@ -877,6 +953,7 @@ const Stage = (() => {
     if (opts.summit) buildStairs(opts.summit);
     else if (m === 'climb' && !STEPS) buildStairs(lastSummit);
     padGroup.visible = m === 'question';
+    doorGroup.visible = m === 'doors';
     stairs.visible = m === 'climb';
     podium.visible = m === 'podium';
     marquee.visible = m === 'question';
@@ -887,7 +964,8 @@ const Stage = (() => {
       f.mood = m === 'lobby' ? 'wave' : 'idle';
       setLabel(f.id, { status: '' });
       let x = 0, y = 0, z = 0;
-      if (m === 'question') { x = (i - (n - 1) / 2) * 2.7; z = 2.2; }
+      if (f.gone) { f.gone = false; f.fresh = true; }   // war durch eine Tür gegangen: plumpst wieder herein
+      if (m === 'question' || m === 'doors') { x = (i - (n - 1) / 2) * 2.7; z = 2.2; }
       else if (m === 'lobby') { x = (i - (n - 1) / 2) * 2.4; z = 0.6; }
       else if (m === 'climb') { [x, y, z] = stairPos((opts.steps && opts.steps[f.id]) || 0, i, n); }
       else if (m === 'podium') {
@@ -918,6 +996,48 @@ const Stage = (() => {
       p.state = ''; p.tipGoal = 0; p.bounce = texts ? now() + i * 0.07 : -9;
       drawPad(p); drawSign(p);
     });
+  }
+
+  /* names: bis zu vier Kategorien. Überzählige Türen verschwinden. */
+  function setDoors(names) {
+    doors.forEach((d, i) => {
+      d.grp.visible = i < names.length;
+      d.text = names[i] || ''; d.state = ''; d.open = 0; d.openGoal = 0; d.bounce = now() + i * 0.08;
+      drawDoorFrame(d); drawDoorLeaf(d);
+    });
+  }
+  /* Figur stellt sich vor die Tür, für die abgestimmt wurde. */
+  function voteWalk(id, door) {
+    const f = figs.get(id), d = doors[door];
+    if (!f || !d) return done();
+    const slot = [[-0.8, 0], [0.8, 0], [-0.4, 0.85], [0.4, 0.85]][f.order % 4];
+    f.jumpT = now();
+    return walkTo(f, d.x + slot[0], 0, DOOR_Z + 2.9 + slot[1]);
+  }
+  /* Gewinner-Tür leuchtet und schwingt auf, die anderen werden grau. */
+  function openDoor(door) {
+    doors.forEach((d, i) => {
+      d.state = i === door ? 'won' : 'lost';
+      if (i === door) { d.openGoal = 1; d.bounce = now(); }
+      drawDoorFrame(d); drawDoorLeaf(d);
+    });
+    return new Promise(r => setTimeout(r, calm ? 50 : 750));
+  }
+  /* Alle Figuren laufen nacheinander durch die Tür und verschwinden dahinter. */
+  function enterDoor(door) {
+    const d = doors[door];
+    if (!d) return done();
+    const list = [...figs.values()].filter(f => !f.gone).sort((a, b) => Math.abs(a.pos.x - d.x) - Math.abs(b.pos.x - d.x));
+    return Promise.all(list.map((f, i) => new Promise(resolve => {
+      setTimeout(async () => {
+        f.mood = 'cheer';
+        await walkTo(f, d.x, 0, DOOR_Z + 1.2);
+        f.mood = 'idle';
+        await walkTo(f, d.x, 0, DOOR_Z - 0.2, 0.5);
+        f.gone = true;
+        resolve();
+      }, calm ? 0 : i * 320);
+    }))).then(() => { d.openGoal = 0; });
   }
 
   function lock(id) { const f = figs.get(id); if (f) f.jumpT = now(); }
@@ -967,6 +1087,9 @@ const Stage = (() => {
   function project(x, y, z) { v.set(x, y, z).project(camera); return [(v.x * 0.5 + 0.5) * W, (-v.y * 0.5 + 0.5) * H]; }
 
   function updateFig(f, t, dt) {
+    f.g.visible = !f.gone;
+    f.label.hidden = f.tag.hidden = f.gone;
+    if (f.gone) { f.shadow.visible = false; return; }
     const wob = calm ? 0 : 1;
     let hop = 0, turn = 1, tilt = Math.sin(t * 1.7 + f.phase) * 0.035 * wob, look = f.mood, ground = f.pos.y;
     if (f.walk) {
@@ -1059,6 +1182,13 @@ const Stage = (() => {
       p.sign.rotation.z = p.state === 'right' && !calm ? Math.sin(t * 5) * 0.03 : 0;
       p.tile.position.y = PAD_TOP / 2 + (p.state === 'wrong' ? -0.07 : 0);
     });
+    if (doorGroup.visible) doors.forEach(d => {
+      d.open += (d.openGoal - d.open) * Math.min(1, dt * 6);
+      d.hinge.rotation.y = d.side * d.open * 1.5;
+      const b = (t - d.bounce) / 0.5;
+      const pulse = b >= 0 && b < 1 && !calm ? Math.sin(b * Math.PI) : 0;
+      d.frame.scale.setScalar(1 + pulse * 0.05);
+    });
     if (stairs.visible) {
       clouds.forEach(c => { c.o.position.x = c.x + (calm ? 0 : Math.sin(t * 0.12 + c.ph) * 1.6); });
       if (flag) flag.userData.cloth.scale.x = calm ? 1 : 0.9 + Math.sin(t * 4) * 0.1;
@@ -1082,9 +1212,10 @@ const Stage = (() => {
     document.fonts.load('40px Bangers').then(() => {
       refreshMarquee(); drawPodium();
       pads.forEach(drawSign);
+      doors.forEach(d => { drawDoorFrame(d); drawDoorLeaf(d); });
       if (STEPS) { const s = STEPS - 1; STEPS = 0; buildStairs(s); }
     }).catch(noop);
   }
 
-  return { ok: true, mount, setPlayers, setInsets, layout, setLabel, setAnswers, lock, walkToPads, reveal, pop, climb, mood };
+  return { ok: true, mount, setPlayers, setInsets, setDoors, voteWalk, openDoor, enterDoor, layout, setLabel, setAnswers, lock, walkToPads, reveal, pop, climb, mood };
 })();

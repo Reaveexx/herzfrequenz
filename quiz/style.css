@@ -906,3 +906,8 @@ kbd {
 @keyframes tilt { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
 .rotate-title { margin: 0; font-family: var(--pow); font-weight: 400; letter-spacing: .04em; font-size: 2.4rem; color: var(--zing); text-shadow: var(--stroke), 4px 5px 0 var(--ink); transform: rotate(-2deg); }
 .rotate-text { margin: 0; color: var(--muted); text-shadow: 1px 2px 0 var(--ink); }
+
+/* ---------- Abstimmung über die Kategorie ---------- */
+.vote-chips { display: inline-flex; gap: 4px; margin-left: 6px; vertical-align: middle; }
+.vote-chips i { width: 16px; height: 16px; border-radius: 50%; background: var(--pc); border: 2.5px solid var(--ink); }
+.tv-ans b { font-family: var(--display, inherit); margin-right: .3em; }

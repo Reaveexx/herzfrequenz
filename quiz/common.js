@@ -2,6 +2,7 @@
 /* Gemeinsame Bausteine für Bildschirm (game.js) und Handy (controller.js). */
 
 const PLAYER_COLORS = ['#ff6b57', '#ffc83d', '#3ee0a1', '#5cb8ff'];
+const DOOR_COLORS = ['#a98bea', '#f6a15b', '#4fcfc0', '#ee7fb4'];   // Türen der Kategorie-Abstimmung
 
 const ICONS = {
   frost: '<path d="M12 2v20M4 6l16 12M20 6L4 18M9 3l3 3 3-3M9 21l3-3 3 3"/>',

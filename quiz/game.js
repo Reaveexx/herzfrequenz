@@ -7,7 +7,8 @@ const SETTINGS = {
   time: 15,           // Sekunden pro Frage
   finaleTime: 12,     // Sekunden pro Frage im Finale
   summit: 10,         // Stufen bis zum Gipfel
-  finaleMax: 25       // Notbremse: so viele Finalfragen höchstens
+  finaleMax: 25,      // Notbremse: so viele Finalfragen höchstens
+  voteTime: 12        // Sekunden für die Abstimmung über die Kategorie
 };
 
 const KEYSETS = [['1', '2', '3', '4'], ['7', '8', '9', '0'], ['a', 's', 'd', 'f'], ['h', 'j', 'k', 'l']];
@@ -201,7 +202,10 @@ const LINES = {
   soloRight: ['Jawoll!', 'Bingo!', 'Volltreffer!', 'Jippie, richtig!'],
   soloWrong: ['Hoppla, daneben!', 'Auweia!', 'Oh-oh, das war nix!', 'Knapp vorbei ist auch daneben!'],
   rounds: ['Auf geht’s! Runde {r}. {title}!', 'Trommelwirbel! Runde {r}. {title}!', 'Juhu! Runde {r}. {title}!'],
-  category: ['{name}, du bist dran! Welche Kategorie darf’s sein?', 'Hopp, hopp, {name}! Such eine Kategorie aus!', '{name} hat die Wahl! Na, was nehmen wir?'],
+  vote: ['Abstimmung! Durch welche Tür soll es gehen?', 'Vier Türen, eine Wahl! Stimmt ab!', 'Hopp, hopp! Wohin geht die Reise?', 'Tür eins, zwei, drei oder vier? Ihr entscheidet!'],
+  voteSolo: ['Vier Türen! Welche darf’s sein?', 'Hopp, hopp! Such dir eine Tür aus!'],
+  voteWon: ['{cat}! Alle Mann durch die Tür!', 'Die Mehrheit sagt: {cat}! Los geht’s!', 'Tür auf für: {cat}!'],
+  voteTie: ['Gleichstand! Das Los entscheidet: {cat}!', 'Unentschieden! Der Zufall sagt: {cat}!'],
   trap: ['{name}, such dir eine fiese Falle aus! Hihihi!', 'Psst, {name}! Wen ärgern wir heute?', '{name}, jetzt wird’s gemein! Wähle eine Falle!'],
   reveal: ['Und richtig ist: {answer}!', 'Die Antwort lautet: {answer}!', 'Tadaa! Es ist: {answer}!']
 };
@@ -467,11 +471,6 @@ const climbSteps = () => Object.fromEntries(S.players.map(p => [figId(p), p.clim
 const playerChip = p => `<span class="pchip" style="--pc:${p.color}">${esc(p.name)}</span>`;
 const cardKey = (p, i) => S.remote ? '' : `<kbd style="--pc:${p.color}">${keyLabel(p.keys[i])}</kbd>`;
 
-function chooserFor() {
-  const min = Math.min(...S.players.map(p => p.score));
-  const lowest = S.players.filter(p => p.score === min);
-  return lowest[S.qCount % lowest.length];
-}
 
 /* Eine Person wählt aus Karten. Gibt den Index der gewählten Karte zurück. */
 function choiceScreen({ kicker, title, hint, chooser, cards, phoneTitle, waitText, speak, emote = 'hm', cardClass = '', sound = 'click' }) {
@@ -510,22 +509,133 @@ function choiceScreen({ kicker, title, hint, chooser, cards, phoneTitle, waitTex
   });
 }
 
+/*
+  Abstimmung: Vier Türen, jede Person stimmt ab (am Handy oder mit ihren Tasten).
+  Die Figur stellt sich vor die gewählte Tür. Die Mehrheit gewinnt, bei Gleichstand
+  entscheidet das Los. Dann laufen alle durch die Gewinner-Tür.
+*/
 async function categoryPhase(round, q) {
-  const chooser = chooserFor();
-  const cats = shuffle(CATEGORIES.filter(c => availableIn(c).length)).slice(0, 3);
+  const cats = shuffle(CATEGORIES.filter(c => availableIn(c).length)).slice(0, 4);
   if (cats.length <= 1) return cats[0];
-  const i = await choiceScreen({
-    kicker: `Runde ${round} · Frage ${q}/${SETTINGS.perRound}`,
-    title: `${playerChip(chooser)} wählt die Kategorie`,
-    hint: S.players.length > 1 ? 'Wer hinten liegt, darf wählen.' : 'Such dir ein Thema aus.',
-    chooser,
-    cards: cats.map(c => ({ label: c, sub: `${availableIn(c).length} Fragen übrig` })),
-    cardClass: 'cat-card',
-    phoneTitle: 'Wähle die Kategorie',
-    waitText: 'die nächste Kategorie.',
-    speak: line('category', { name: chooser.name })
+  const remote = S.remote;
+  const n = S.players.length;
+  const limit = SETTINGS.voteTime * 1000;
+  const votes = new Array(n).fill(null);
+  const pads = [];
+
+  show(`
+    <div class="quiz vote ${remote ? 'quiz-remote' : 'quiz-local'}">
+      ${Stage.ok ? '<div class="stage-full" id="stage"></div>' : ''}
+      <div class="hud hud-top" data-inset="top">
+        <header class="qhead">
+          <span class="label">Runde ${round} · Frage ${q}/${SETTINGS.perRound}</span>
+          <span class="label cat">Abstimmung</span>
+        </header>
+        <h2 class="question">${n > 1 ? 'Durch welche Tür soll es gehen?' : 'Durch welche Tür gehst du?'}</h2>
+        <div class="timer" aria-hidden="true"><div class="timer-fill"></div></div>
+        ${Stage.ok ? '' : `<div class="tv-answers">${cats.map((c, i) => `<div class="tv-ans" data-a="${i}"><b>${i + 1}</b> ${esc(c)} <span class="vote-chips"></span></div>`).join('')}</div>`}
+      </div>
+      <div class="hud hud-bottom" data-inset="bottom">
+      <div class="panels panels-${n} ${remote ? 'panels-remote' : ''}">
+        ${S.players.map((p, i) => `
+          <section class="panel" data-p="${i}" style="--pc:${p.color}">
+            <div class="ptop">
+              <span class="pname">${esc(p.name)}</span>
+              <span class="pscore">${p.score.toLocaleString('de-DE')}</span>
+            </div>
+            ${remote ? '<div class="pstatus">Stimmt ab …</div>' : '<div class="answer-zone"></div>'}
+          </section>`).join('')}
+      </div>
+      </div>
+    </div>`, 'is-quiz' + FULL);
+
+  const panels = $$('.panel');
+  const fill = $('.timer-fill'), timerEl = $('.timer');
+  if (Stage.ok) {
+    mountStage();
+    Stage.setPlayers(figList());
+    Stage.setDoors(cats);
+    Stage.layout('doors');
+    S.players.forEach(p => { Stage.mood(figId(p), 'think'); });
+  }
+  Voice.say(line(n > 1 ? 'vote' : 'voteSolo'), { emote: 'hm' });
+
+  let finished = false, raf = 0;
+  let resolveVote;
+  const voted = new Promise(r => { resolveVote = r; });
+  const start = performance.now();
+
+  function vote(i, door) {
+    if (finished || votes[i] !== null || !Number.isInteger(door) || door < 0 || door >= cats.length) return;
+    votes[i] = door;
+    const p = S.players[i];
+    Sound.lock();
+    Stage.mood(figId(p), 'idle');
+    Stage.voteWalk(figId(p), door);
+    if (remote) {
+      const el = $('.pstatus', panels[i]);
+      el.textContent = `Tür ${door + 1}: ${cats[door]}`; el.className = 'pstatus is-locked';
+      Remote.setView(p, { k: 'wait', title: 'Abgestimmt', text: cats[door] });
+    } else if (pads[i]) pads[i].lock(`Tür ${door + 1}`);
+    const chips = $(`.tv-ans[data-a="${door}"] .vote-chips`);
+    if (chips) chips.insertAdjacentHTML('beforeend', `<i style="--pc:${p.color}"></i>`);
+    if (votes.every(v => v !== null)) setTimeout(finish, 500);
+  }
+
+  if (remote) {
+    Remote.setAll(() => ({ k: 'pick', title: 'Welche Tür?', options: cats.map((c, i) => ({ label: c, sub: `Tür ${i + 1}`, color: DOOR_COLORS[i] })) }));
+  } else {
+    S.players.forEach((p, i) => {
+      pads[i] = createPad({
+        root: panels[i], zone: $('.answer-zone', panels[i]), answers: cats, order: cats.map((_, k) => k),
+        keys: p.keys.map(keyLabel), limit, onAnswer: door => vote(i, door)
+      });
+    });
+  }
+  listen((i, val, src) => {
+    if (src === 'key') { if (pads[i] && val < cats.length) pads[i].press(val); }
+    else vote(i, val);
   });
-  return cats[i];
+
+  function frame(now) {
+    if (finished) return;
+    const el = now - start;
+    timerEl.style.setProperty('--t', Math.max(0, 1 - el / limit).toFixed(4));
+    fill.classList.toggle('hurry', limit - el < 4000);
+    if (el >= limit) return finish();
+    raf = requestAnimationFrame(frame);
+  }
+  raf = requestAnimationFrame(frame);
+
+  function finish() {
+    if (finished) return;
+    finished = true;
+    cancelAnimationFrame(raf);
+    unlisten();
+    resolveVote();
+  }
+  await voted;
+
+  // Auszählen: Mehrheit gewinnt, bei Gleichstand (oder ohne Stimmen) entscheidet das Los
+  const counts = cats.map((_, door) => votes.filter(v => v === door).length);
+  const most = Math.max(...counts);
+  const tied = counts.map((c, door) => c === most ? door : -1).filter(door => door >= 0);
+  const winner = pick(tied);
+  const cat = cats[winner];
+  timerEl.classList.add('done');
+  pads.forEach(pd => pd.destroy());
+  S.players.forEach((p, i) => { if (votes[i] === null) Stage.mood(figId(p), 'idle'); });
+  Remote.setAll(() => ({ k: 'wait', title: cat, text: 'Gleich kommt die Frage auf dem Fernseher.' }));
+  await wait(Stage.ok ? 900 : 300);   // die letzten Figuren kommen noch an
+
+  $('.question').textContent = tied.length > 1 && n > 1 ? `Gleichstand! Das Los sagt: ${cat}` : cat;
+  $$('.tv-ans').forEach(el => el.classList.add(+el.dataset.a === winner ? 'right' : 'dim'));
+  Sound.good();
+  Voice.say(tied.length > 1 && most > 0 && n > 1 ? line('voteTie', { cat }) : line('voteWon', { cat }), { emote: 'yay' });
+  await Stage.openDoor(winner);
+  await Stage.enterDoor(winner);
+  await wait(Stage.ok ? 350 : 1400);
+  return cat;
 }
 
 /* Sabotage: jede Person wählt nacheinander. Schilde wirken gegen alles in dieser Runde. */
@@ -1023,7 +1133,7 @@ function setupScreen() {
           <ol class="rules">
             <li><b>${SETTINGS.rounds} Runden mit je ${SETTINGS.perRound} Fragen.</b> Jede Frage wird vorgelesen, dann läuft die Zeit. Schnell und richtig gibt bis zu 1.000 Punkte, in der letzten Runde das Doppelte.</li>
             <li><b>Sabotage vor jeder Runde.</b> Schick anderen Frost, Nebel, Kreisel, Kleckse, Zeitdieb oder Spiegel. Oder halte ein Schild hoch.</li>
-            <li><b>Wer hinten liegt, wählt die Kategorie.</b></li>
+            <li><b>Abstimmung vor jeder Frage.</b> Vier Türen, vier Kategorien. Die Mehrheit entscheidet, bei Gleichstand das Los. Dann laufen alle durch die Tür.</li>
             <li><b>Finale Gipfelsturm.</b> Wer vorne liegt, startet höher. Wer zuerst oben ist, gewinnt.</li>
           </ol>
           <div class="toggles">
