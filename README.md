@@ -49,7 +49,7 @@ Im Ordner `quiz/` liegt ein eigenständiges Party-Quiz für 1 bis 4 Personen. Na
 - **Ein Bildschirm:** Alle antworten am selben Gerät, per Tippen oder mit eigenen Tasten.
 - **Handys als Controller:** Der große Bildschirm (Fernseher, Laptop) zeigt einen QR-Code. Bis zu vier Leute scannen ihn, öffnen `quiz/controller.html` und spielen geheim am eigenen Handy. Die Fallen (Frost, Nebel, Kleckse …) erscheinen dann auf dem Handy der getroffenen Person.
 
-Die Handys sind über **Supabase Realtime** mit dem Bildschirm verbunden. Genutzt werden dieselbe Project-URL und derselbe anon-Schlüssel aus `config.js` wie bei der Hörspiel-Seite. Es wird nichts in der Datenbank gespeichert; die Nachrichten laufen nur live durch einen Kanal pro Raumcode. Ist das Supabase-Projekt pausiert, zeigt die Lobby „Keine Verbindung zum Server“. Dann im Supabase-Dashboard das Projekt wieder aktivieren.
+Die Handys verbinden sich **direkt** mit dem Bildschirm (WebRTC über die Bibliothek PeerJS, von jsDelivr geladen). Bildschirm und Handys finden sich einmal über den kostenlosen öffentlichen PeerJS-Vermittlungsdienst; danach laufen alle Nachrichten direkt zwischen den Geräten, im selben WLAN also nicht mehr übers Internet. Es braucht kein Konto und keine Einrichtung, aber Internet für den Verbindungsaufbau. Gäste-WLANs, die Geräte voneinander abschotten, können die direkte Verbindung verhindern. Mit `?supabase` hinter der Adresse läuft es stattdessen wie früher über Supabase Realtime mit den Zugangsdaten aus `config.js`.
 
 **Comic-Bühne aus Papier:** Das ganze Spiel sieht aus wie ein handgemachter Comic: Tuschekonturen, flache Farben, Rasterpunkte, ausgeschnittene Zettel mit weißem Papierrand. Am großen Bildschirm steht ein Papier-Diorama in 2,5D: Die vier Spielfiguren (eigene Entwürfe mit Partyhut, Antenne, Ohren und Kappe), Publikum, Vorhänge, Wimpel und Schilder sind flache Pappausschnitte, die hintereinander im Raum stehen und sich beim Kameraschwenk gegeneinander verschieben. Die Figuren drehen sich wie eine Spielkarte um, hüpfen beim Laufen und zeigen je nach Lage ein anderes Gesicht (überlegen, jubeln, traurig). Bei der Auflösung laufen alle auf das Feld ihrer Antwort, falsche Schilder kippen nach hinten. Im Finale steigen die Figuren eine Papptreppe vor einem Pappberg hoch, am Ende gibt es ein Siegerpodest mit Konfetti.
 
@@ -71,7 +71,7 @@ Sobald Figuren zu sehen sind (Lobby, Frage, Auflösung, Finale, Sieger), füllt 
 - `quiz/controller.html`, `quiz/controller.js`: Handy-Seite.
 - `quiz/stage.js`: Papier-Bühne mit den Spielfiguren (alle Zeichnungen entstehen dort im Code).
 - `quiz/pad.js`: Antwortfeld mit allen Fallen (Bildschirm und Handy).
-- `quiz/net.js`: Verbindung zwischen Bildschirm und Handys.
+- `quiz/net.js`: Verbindung zwischen Bildschirm und Handys (direkt per WebRTC, wahlweise Supabase oder Testmodus).
 - `quiz/common.js`, `quiz/style.css`: gemeinsame Bausteine und Aussehen.
 
 **Lokal testen:** Im Hauptordner `python3 -m http.server 4173` starten und `http://localhost:4173/quiz/` öffnen. Mit `http://localhost:4173/quiz/?lokal` läuft der Handy-Modus ohne Server: Dann den Link aus der Lobby in weiteren Tabs desselben Browsers öffnen, jeder Tab spielt ein Handy.
