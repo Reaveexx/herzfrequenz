@@ -371,6 +371,68 @@ const Stage = (() => {
     });
   })();
 
+  /* ---------- Titelbild: Logo aus einzelnen Papp-Buchstaben ---------- */
+  const titleGroup = new T.Group();
+  titleGroup.visible = false;
+  scene.add(titleGroup);
+  const LOGO = 'KOPFNUSS', LOGO_Y = 6.5, LOGO_Z = -4.5;
+  let titleT0 = -99, curtainT0 = -99;
+  function drawLetter(ch, i) {
+    const [c, g] = mk(280, 320);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `250px ${POW}`;
+    g.lineJoin = 'round';
+    g.fillStyle = RED; g.strokeStyle = RED; g.lineWidth = 30;
+    g.strokeText(ch, 152, 182); g.fillText(ch, 152, 182);          // roter Schatten
+    g.strokeStyle = INK; g.lineWidth = 30; g.strokeText(ch, 138, 166);
+    g.fillStyle = i < 4 ? PAPER : SUN; g.fillText(ch, 138, 166);
+    // Rasterpunkte nur auf der Buchstabenfläche
+    const [d, dg] = mk(280, 320);
+    dg.textAlign = 'center'; dg.textBaseline = 'middle'; dg.font = g.font;
+    dg.fillText(ch, 138, 166);
+    dg.globalCompositeOperation = 'source-in';
+    const [h, hg] = mk(280, 320);
+    halftone(hg, 0, 0, 280, 320, 15, i < 4 ? '#e6d9bd' : '#f59f2a', (x, y) => (y - 150) / 150);
+    dg.drawImage(h, 0, 0);
+    g.drawImage(d, 0, 0);
+    return sticker(c, 9);
+  }
+  const letters = [...LOGO].map((ch, i) => {
+    const m = new T.Mesh(new T.PlaneGeometry(2.05, 2.34), cutMat(tex(drawLetter(ch, i))));
+    const l = { m, ch, i, x: (i - 3.5) * 1.72 + (i > 3 ? 0.25 : -0.25), y: LOGO_Y + [0.1, -0.05, 0.12, -0.02, 0.06, -0.08, 0.1, 0][i], rot: [-.09, .05, -.04, .08, -.07, .04, -.05, .09][i] };
+    m.position.set(l.x, l.y + 14, LOGO_Z + (i % 2) * 0.06);
+    titleGroup.add(m);
+    return l;
+  });
+  const banner = (() => {
+    const [c, g] = mk(1400, 190), r = rnd(71);
+    const o = { c, g, r };
+    const m = new T.Mesh(new T.PlaneGeometry(10.2, 1.38), cutMat(null));
+    m.position.set(0, 4.55, LOGO_Z + 0.2);
+    titleGroup.add(m);
+    o.m = m;
+    return o;
+  })();
+  function drawBanner() {
+    const { c, g } = banner, r = rnd(71);
+    g.clearRect(0, 0, 1400, 190);
+    // Band mit eingeschnittenen Enden
+    g.beginPath();
+    g.moveTo(24, 40); g.lineTo(1376, 30); g.lineTo(1330, 96); g.lineTo(1380, 160); g.lineTo(30, 166); g.lineTo(72, 100); g.closePath();
+    g.fillStyle = PAPER; g.fill();
+    g.save(); g.clip(); halftone(g, 0, 0, 1400, 190, 16, '#f1e3c4', (x, y) => (y - 90) / 110); g.restore();
+    ink(g, 9);
+    fitText(g, 'Das Quiz, bei dem du deine Freunde ausbremst!', 700, 100, 1180, 110, 78, INK);
+    void r;
+    banner.m.material.map = tex(sticker(c, 7));
+    banner.m.material.needsUpdate = true;
+  }
+  drawBanner();
+  function redrawLogo() {
+    letters.forEach(l => { l.m.material.map = tex(drawLetter(l.ch, l.i)); l.m.material.needsUpdate = true; });
+    drawBanner();
+  }
+
   /* ---------- Antwortfelder mit Schildern ---------- */
   const PAD_X = [-5.55, -1.85, 1.85, 5.55], PAD_Z = -1.3, PAD_TOP = 0.2, SIGN_Z = -3.1;
   const padGroup = new T.Group();
@@ -695,13 +757,16 @@ const Stage = (() => {
     return o;
   })();
   const confetti = [];
+  const confettiGroup = new T.Group();
+  confettiGroup.visible = false;
+  scene.add(confettiGroup);
   (() => {
     const r = rnd(33), geo = new T.PlaneGeometry(.2, .12);
     const mats = [...TEAM, PAPER, RED].map(c => new T.MeshBasicMaterial({ color: c, side: T.DoubleSide }));
     for (let i = 0; i < (calm ? 0 : 110); i++) {
       const m = new T.Mesh(geo, mats[i % mats.length]);
       const c = { m, x: (r() - .5) * 17, z: -2 + r() * 5, y: r() * 11, v: 1.1 + r() * 1.6, s: 2 + r() * 5, ph: r() * 6 };
-      podium.add(m);
+      confettiGroup.add(m);
       confetti.push(c);
     }
   })();
@@ -879,7 +944,15 @@ const Stage = (() => {
 
   function setPlayers(list) {
     const ids = new Set(list.map(p => p.id));
-    figs.forEach((f, id) => { if (!ids.has(id)) { scene.remove(f.g, f.shadow); f.label.remove(); f.tag.remove(); f.pops.forEach(x => x.el.remove()); figs.delete(id); } });
+    const drop = f => { scene.remove(f.g, f.shadow); f.label.remove(); f.tag.remove(); f.pops.forEach(x => x.el.remove()); if (figs.get(f.id) === f) figs.delete(f.id); };
+    figs.forEach((f, id) => {
+      if (ids.has(id)) { f.leaving = false; return; }
+      if (mode !== 'title' || calm) return drop(f);
+      if (f.leaving) return;
+      f.leaving = true;   // hüpft zur Seite hinaus und verschwindet dann
+      f.tag.hidden = true;
+      walkTo(f, f.pos.x < 0 ? -17 : 17, 0, f.pos.z).then(() => { if (f.leaving) drop(f); });
+    });
     list.forEach((p, i) => {
       let f = figs.get(p.id);
       if (!f) { f = makeFig(p, i); figs.set(p.id, f); }
@@ -910,6 +983,7 @@ const Stage = (() => {
     question: { look: [0, 1.4, 0], elev: 25, pts: [[-7.5, 3.75, SIGN_Z], [7.5, 3.75, SIGN_Z], [-7.3, 0, -0.1], [7.3, 0, -0.1], [-5.4, -0.5, 2.6], [5.4, -0.5, 2.6]] },
     reveal: { look: [0, 1.4, -1], elev: 20, pts: [[-7.5, 3.8, SIGN_Z], [7.5, 3.8, SIGN_Z], [-7.4, -0.35, 0.1], [7.4, -0.35, 0.1]] },
     doors: { look: [0, 1.9, -0.6], elev: 17, pts: [[-7.3, 4.75, DOOR_Z], [7.3, 4.75, DOOR_Z], [-7.3, 0, -0.1], [7.3, 0, -0.1], [-5.4, -0.5, 2.6], [5.4, -0.5, 2.6]] },
+    title: { look: [0, 3.6, -1.5], elev: 5, pts: [[-7.6, 7.9, LOGO_Z], [7.6, 7.9, LOGO_Z], [-6.2, -0.45, 1.6], [6.2, -0.45, 1.6]] },
     lobby: { look: [0, 1.1, 0.6], elev: 9, pts: [[-4.8, -0.55, 0.6], [4.8, -0.55, 0.6], [-4.8, 3, 0.6], [4.8, 3, 0.6]] },
     climb: { look: [0, 2.4, 0], elev: 11, pts: [[-8.1, -0.45, 1.05], [8.4, -0.45, 1.05], [-8.1, 2.7, -0.2], [8.6, 6.4, -1.2]] },
     podium: { look: [0, 1.6, 0], elev: 8, pts: [[-6.1, -0.5, 0.9], [6.1, -0.5, 0.9], [0, 4.6, 0], [-4, 3.6, 0], [4, 3.6, 0]] }
@@ -1006,19 +1080,34 @@ const Stage = (() => {
     else if (m === 'climb' && !STEPS) buildStairs(lastSummit);
     padGroup.visible = m === 'question';
     doorGroup.visible = m === 'doors';
+    titleGroup.visible = m === 'title';
+    confettiGroup.visible = m === 'title' || m === 'podium';
+    confetti.forEach((c, i) => { c.m.visible = m !== 'title' || i % 3 === 0; });
+    if (m === 'title') {
+      if (opts.intro && !calm) { titleT0 = curtainT0 = now(); snapUntil = now() + 0.2; }
+      else if (titleT0 < 0) titleT0 = now() - 60;
+    }
     stairs.visible = m === 'climb';
     podium.visible = m === 'podium';
     marquee.visible = m === 'question';
     aimCamera();
-    const list = [...figs.values()].sort((a, b) => a.order - b.order);
+    const list = [...figs.values()].filter(f => !f.leaving).sort((a, b) => a.order - b.order);
     const n = list.length;
     return Promise.all(list.map((f, i) => {
-      f.mood = m === 'lobby' ? 'wave' : 'idle';
+      f.mood = m === 'lobby' || m === 'title' ? 'wave' : 'idle';
       setLabel(f.id, { status: '' });
       let x = 0, y = 0, z = 0;
       if (f.gone) { f.gone = false; f.fresh = true; }   // war durch eine Tür gegangen: plumpst wieder herein
       if (m === 'question' || m === 'doors') { x = (i - (n - 1) / 2) * 2.7; z = 2.2; }
       else if (m === 'lobby') { x = (i - (n - 1) / 2) * 2.4; z = 0.6; }
+      else if (m === 'title') {
+        x = (i - (n - 1) / 2) * 2.7; z = 1.6;
+        if (f.fresh && !calm) {   // hüpft von der Seite herein statt von oben zu fallen
+          f.fresh = false;
+          f.pos.set(x < 0 || (x === 0 && i % 2 === 0) ? -17 : 17, 0, z);
+          return walkTo(f, x, 0, z, 1.5 + i * 0.12);
+        }
+      }
       else if (m === 'climb') { [x, y, z] = stairPos((opts.steps && opts.steps[f.id]) || 0, i, n); }
       else if (m === 'podium') {
         const r = opts.ranks ? opts.ranks.indexOf(f.id) : i;
@@ -1142,7 +1231,7 @@ const Stage = (() => {
 
   function updateFig(f, t, dt) {
     f.g.visible = !f.gone;
-    f.label.hidden = f.tag.hidden = f.gone;
+    f.label.hidden = f.gone; f.tag.hidden = f.gone || !!f.leaving;
     if (f.gone) { f.shadow.visible = false; return; }
     const wob = calm ? 0 : 1;
     let hop = 0, turn = 1, tilt = Math.sin(t * 1.7 + f.phase) * 0.035 * wob, look = f.mood, ground = f.pos.y;
@@ -1217,11 +1306,29 @@ const Stage = (() => {
     camera.setViewOffset(W, H, -cam.ox * W / 2, cam.oy * H / 2, W, H);
     place(camera, cam.look, cam.elev, cam.dist, calm ? 0 : Math.sin(t * 0.27) * cam.dist * 0.035);
 
+    // Vorhang: steht am Bildrand; beim Titel-Auftakt fährt er erst aus der Mitte auf
+    const ck = clamp((t - curtainT0 - 0.25) / 1.5, 0, 1), cOpen = ck < 0.5 ? 2 * ck * ck : 1 - Math.pow(-2 * ck + 2, 2) / 2;
     curtains.forEach(c => {
       v.set(c.s, 0, 0.5).unproject(camera).sub(camera.position);
       const edge = camera.position.x + v.x * (c.o.position.z - camera.position.z) / v.z;
-      c.o.position.x = edge + c.s * 1.3;
+      const open = edge + c.s * 1.3;
+      c.o.position.x = c.s * 4.2 + (open - c.s * 4.2) * cOpen;
     });
+    if (titleGroup.visible) {
+      letters.forEach(l => {
+        // fällt herein und federt nach
+        const k = clamp((t - titleT0 - 1.1 - l.i * 0.12) / 0.7, 0, 1);
+        const fall = k === 1 ? 0 : Math.pow(1 - k, 2) * 13 * Math.abs(Math.cos(k * Math.PI * 2.5));
+        const wave = calm ? 0 : Math.sin(t * 2.1 - l.i * 0.55) * 0.13 * k;
+        l.m.position.y = l.y + fall + wave;
+        l.m.rotation.z = l.rot + (calm ? 0 : Math.sin(t * 1.5 + l.i * 1.3) * 0.045);
+        l.m.visible = t - titleT0 > 1.0 + l.i * 0.12;
+      });
+      const bk = clamp((t - titleT0 - 2.5) / 0.45, 0, 1);
+      banner.m.visible = bk > 0;
+      banner.m.scale.set(bk + Math.sin(bk * Math.PI) * 0.18, 0.6 + 0.4 * bk, 1);
+      banner.m.rotation.z = -0.02 + (calm ? 0 : Math.sin(t * 1.2) * 0.012);
+    }
     swayers.forEach(s => {
       const w = calm ? 0 : Math.sin(t * s.sp + s.ph);
       if (s.rz) s.o.rotation.z = (s.base || 0) + w * s.rz;
@@ -1252,8 +1359,8 @@ const Stage = (() => {
       clouds.forEach(c => { c.o.position.x = c.x + (calm ? 0 : Math.sin(t * 0.12 + c.ph) * 1.6); });
       if (flag) flag.userData.cloth.scale.x = calm ? 1 : 0.9 + Math.sin(t * 4) * 0.1;
     }
-    if (podium.visible) {
-      burst.rotation.z = calm ? 0 : t * 0.25;
+    if (podium.visible) burst.rotation.z = calm ? 0 : t * 0.25;
+    if (confettiGroup.visible) {
       confetti.forEach(c => {
         c.y -= c.v * dt;
         if (c.y < 0) { c.y = 9 + Math.random() * 3; c.x = (Math.random() - .5) * 17; }
@@ -1276,7 +1383,7 @@ const Stage = (() => {
   // Sobald die Comic-Schrift geladen ist, alles Beschriftete neu zeichnen
   if (document.fonts && document.fonts.load) {
     document.fonts.load('40px Bangers').then(() => {
-      refreshMarquee(); drawPodium();
+      refreshMarquee(); drawPodium(); redrawLogo();
       pads.forEach(drawSign);
       doors.forEach(d => { drawDoorFrame(d); drawDoorLeaf(d); });
       if (STEPS) { const s = STEPS - 1; STEPS = 0; buildStairs(s); }
