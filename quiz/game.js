@@ -445,10 +445,11 @@ async function runGame() {
       kicker: `Runde ${r} von ${SETTINGS.rounds}`,
       title,
       text: solo ? `${SETTINGS.perRound} Fragen. Je schneller du richtig antwortest, desto mehr Punkte.`
-        : `${SETTINGS.perRound} Fragen. Vorher dürft ihr euch gegenseitig Steine in den Weg legen.`,
+        : r === 1 ? `${SETTINGS.perRound} Fragen zum Warmwerden. Items gibt es ab Runde 2.`
+          : `${SETTINGS.perRound} Fragen. Vorher zieht jede Person ein Item.`,
       speak: line('rounds', { r, title })
     });
-    if (!solo) await sabotagePhase();
+    if (!solo && r > 1) await sabotagePhase();   // in der ersten Runde gibt es noch keine Items
     for (let q = 1; q <= SETTINGS.perRound; q++) {
       const cat = await categoryPhase(r, q);
       const question = draw(cat) || drawAny();
@@ -495,7 +496,7 @@ function choiceScreen({ kicker, title, hint, chooser, cards, phoneTitle, waitTex
         ${cards.map((c, i) => `
           <button class="card ${cardClass} ${c.cls || ''}" data-i="${i}" style="--pc:${c.color || chooser.color}">
             ${cardKey(chooser, i)}
-            ${c.icon ? icon(c.icon, 'card-ic') : ''}
+            ${c.art ? ItemArt.img(c.art, 'card-art') : c.icon ? icon(c.icon, 'card-ic') : ''}
             <span class="card-title">${esc(c.label)}</span>
             <span class="card-sub">${esc(c.sub || '')}</span>
           </button>`).join('')}
@@ -503,7 +504,7 @@ function choiceScreen({ kicker, title, hint, chooser, cards, phoneTitle, waitTex
     </div>`, 'is-choose');
   if (speak) Voice.say(speak, { emote });
   Remote.setAll(p => p === chooser
-    ? { k: 'pick', title: phoneTitle, options: cards.map(c => ({ label: c.label, sub: c.sub || '', icon: c.icon || '', color: c.color || '' })) }
+    ? { k: 'pick', title: phoneTitle, options: cards.map(c => ({ label: c.label, sub: c.sub || '', icon: c.icon || '', art: c.art || '', color: c.color || '' })) }
     : { k: 'wait', title: `${chooser.name} wählt`, text: waitText });
   return new Promise(resolve => {
     let done = false;
@@ -583,7 +584,7 @@ async function categoryPhase(round, q) {
     Sound.lock();
     // Geheim: Die Figur hüpft nur kurz, läuft aber erst los, wenn alle gewählt haben
     Stage.lock(figId(p));
-    Stage.mood(figId(p), 'idle');
+    Stage.mood(figId(p), 'smile');
     Stage.setLabel(figId(p), { status: 'abgestimmt', fx: [] });
     if (remote) {
       const el = $('.pstatus', panels[i]);
@@ -657,7 +658,7 @@ async function categoryPhase(round, q) {
   const tied = counts.map((c, door) => c === most ? door : -1).filter(door => door >= 0);
   const winner = pick(tied);
   const cat = cats[winner];
-  S.players.forEach((p, i) => { if (votes[i] === null) Stage.mood(figId(p), 'idle'); });
+  S.players.forEach((p, i) => { if (votes[i] === null) Stage.mood(figId(p), 'ohh'); });
   Remote.setAll(() => ({ k: 'wait', title: cat, text: 'Gleich kommt die Frage auf dem Fernseher.' }));
   await wait(Stage.ok ? 500 : 300);
 
@@ -669,6 +670,7 @@ async function categoryPhase(round, q) {
     Voice.say(line(most > 0 ? 'voteSpin' : 'voteNone'), { emote: 'hm' });
     // Saallicht runter, damit der Stern leuchtet
     Stage.dim(true);
+    S.players.forEach(p => Stage.mood(figId(p), 'nervous'));
     app.classList.add('lights-down');
     await wait(Voice.on ? 1500 : 900);
     const cards = $$('.tv-ans');
@@ -691,6 +693,8 @@ async function categoryPhase(round, q) {
   $('.question').textContent = cat;
   $$('.tv-ans').forEach(el => el.classList.add(+el.dataset.a === winner ? 'right' : 'dim'));
   Voice.say(line(lottery ? 'voteTie' : 'voteWon', { cat }), { emote: 'yay' });
+  S.players.forEach((p, i) => Stage.mood(figId(p), votes[i] === winner ? 'cheer' : votes[i] === null ? 'idle' : 'ohh'));
+  await wait(Stage.ok ? 900 : 0);
   await Stage.openDoor(winner);
   await Stage.enterDoor(winner);
   await wait(Stage.ok ? 350 : 1400);
@@ -702,18 +706,17 @@ async function sabotagePhase() {
   const order = S.players.slice().sort((a, b) => a.score - b.score || a.id - b.id);
   const plans = [];
   for (const p of order) {
-    const options = shuffle(Object.keys(SABOTAGES)).slice(0, 2).concat('schild');
+    const options = shuffle(Object.keys(SABOTAGES).concat('schild')).slice(0, 3);
     const oi = await choiceScreen({
-      kicker: 'Sabotage',
+      kicker: 'Items',
       title: `${playerChip(p)} ist dran`,
       hint: S.remote ? 'Die Wahl passiert geheim auf dem Handy.' : 'Die anderen schauen weg. Oder auch nicht.',
       chooser: p,
-      cards: options.map(o => o === 'schild'
-        ? { label: 'Schild', sub: 'Wehrt in dieser Runde jede Falle gegen dich ab.', icon: 'schild', cls: 'shield' }
-        : { label: SABOTAGES[o].name, sub: SABOTAGES[o].desc, icon: o }),
+      // nur Name und gezeichnetes Icon, ohne Erklärtext
+      cards: options.map(o => ({ label: o === 'schild' ? 'Schild' : SABOTAGES[o].name, art: o, cls: o === 'schild' ? 'shield' : '' })),
       cardClass: 'sabo-card',
-      phoneTitle: 'Such dir eine Falle aus',
-      waitText: 'eine Falle aus.',
+      phoneTitle: 'Such dir ein Item aus',
+      waitText: 'ein Item aus.',
       speak: line('trap', { name: p.name }),
       emote: 'hihi'
     });
@@ -740,16 +743,16 @@ async function sabotagePhase() {
 
   const shielded = new Set(plans.filter(x => x.type === 'schild').map(x => x.from));
   const lines = plans.map(x => {
-    if (x.type === 'schild') return `<li>${playerChip(x.from)} <span class="arrow">hält ein</span> <b class="tag tag-shield">${icon('schild')}Schild</b> <span class="arrow">hoch</span></li>`;
+    if (x.type === 'schild') return `<li>${playerChip(x.from)} <span class="arrow">hält ein</span> <b class="tag tag-shield">${ItemArt.img('schild', 'tag-art')}Schild</b> <span class="arrow">hoch</span></li>`;
     const blocked = shielded.has(x.target);
     x.blocked = blocked;
     if (!blocked && !x.target.pending.includes(x.type)) x.target.pending.push(x.type);
-    return `<li class="${blocked ? 'blocked' : ''}">${playerChip(x.from)} <span class="arrow">schickt</span> <b class="tag">${icon(x.type)}${SABOTAGES[x.type].name}</b> <span class="arrow">an</span> ${playerChip(x.target)}${blocked ? ' <span class="block-note">abgewehrt</span>' : ''}</li>`;
+    return `<li class="${blocked ? 'blocked' : ''}">${playerChip(x.from)} <span class="arrow">schickt</span> <b class="tag">${ItemArt.img(x.type, 'tag-art')}${SABOTAGES[x.type].name}</b> <span class="arrow">an</span> ${playerChip(x.target)}${blocked ? ' <span class="block-note">abgewehrt</span>' : ''}</li>`;
   });
   Sound.sabo();
   show(`
     <div class="summary">
-      <p class="kicker">Sabotage</p>
+      <p class="kicker">Items</p>
       <h2 class="choose-title">Das kommt auf euch zu</h2>
       <ul class="sabo-list">${lines.join('')}</ul>
       <p class="choose-hint">Die Fallen wirken bei der nächsten Frage.</p>
@@ -838,7 +841,7 @@ async function questionPhase(q, opts) {
     Stage.setPlayers(figList());
     Stage.setAnswers(null);
     Stage.layout(opts.climb ? 'climb' : 'question', { steps: climbSteps(), summit: SETTINGS.summit });
-    st.forEach(s => Stage.setLabel(figId(s.p), { status: 'hört zu', fx: fxNames(s) }));
+    st.forEach(s => { Stage.setLabel(figId(s.p), { status: 'hört zu', fx: fxNames(s) }); Stage.mood(figId(s.p), s.fx.length ? 'angry' : 'idle'); });
   }
 
   // Erst vorlesen, dann geht die Zeit los. Die Frage steht nur auf dem Fernseher.
@@ -862,7 +865,7 @@ async function questionPhase(q, opts) {
     s.done = true; s.choice = answer; s.at = el;
     Sound.lock();
     Stage.lock(figId(s.p));
-    Stage.mood(figId(s.p), 'idle');
+    Stage.mood(figId(s.p), 'smile');
     Stage.setLabel(figId(s.p), { status: 'eingeloggt', fx: [] });
     if (remote) {
       setStatus(i, 'Eingeloggt', 'is-locked');
@@ -900,6 +903,7 @@ async function questionPhase(q, opts) {
     const el = now - start;
     timerEl.style.setProperty('--t', Math.max(0, 1 - el / limit).toFixed(4));
     fill.classList.toggle('hurry', limit - el < 5000);
+    st.forEach(s => { if (!s.done && !s.nervous && s.deadline - el < 5000) { s.nervous = true; Stage.mood(figId(s.p), 'nervous'); } });
     const sec = Math.ceil((limit - el) / 1000);
     if (sec <= 5 && sec !== lastTick && sec > 0) { lastTick = sec; Sound.tick(); }
     st.forEach((s, i) => {
@@ -908,7 +912,7 @@ async function questionPhase(q, opts) {
       if (!s.done && el >= s.deadline) {
         s.done = true;
         Stage.setLabel(figId(s.p), { status: 'Zeit um', fx: [] });
-        Stage.mood(figId(s.p), 'sad');
+        Stage.mood(figId(s.p), 'ohh');
         if (s.pad) s.pad.lock('Zeit um');
         else {
           setStatus(i, 'Zeit um', 'is-late');
@@ -1217,7 +1221,7 @@ function setupScreen() {
           <h2 class="box-title">So geht’s</h2>
           <ol class="rules">
             <li><b>${SETTINGS.rounds} Runden mit je ${SETTINGS.perRound} Fragen.</b> Jede Frage wird vorgelesen, dann läuft die Zeit. Schnell und richtig gibt bis zu 1.000 Punkte, in der letzten Runde das Doppelte.</li>
-            <li><b>Sabotage vor jeder Runde.</b> Schick anderen Frost, Nebel, Kreisel, Kleckse, Zeitdieb oder Spiegel. Oder halte ein Schild hoch.</li>
+            <li><b>Items ab Runde 2.</b> Vor jeder Runde zieht jede Person eins von drei zufälligen Items: Frost, Nebel, Kreisel, Klecks, Zeitdieb, Spiegel oder Schild. Die Fallen schickst du anderen, das Schild schützt dich.</li>
             <li><b>Abstimmung vor jeder Frage.</b> Vier Türen, vier Kategorien. Die Mehrheit entscheidet. Bei Gleichstand springt der Zufallsstern zwischen den Türen hin und her. Dann laufen alle durch die Tür.</li>
             <li><b>Finale Gipfelsturm.</b> Wer vorne liegt, startet höher. Wer zuerst oben ist, gewinnt.</li>
           </ol>

@@ -990,3 +990,15 @@ kbd {
 .is-setup.is-full .press { padding-bottom: 2vh; }
 .is-setup.is-full .menu { width: min(1180px, 100%); max-height: 60vh; overflow: auto; }
 .is-setup.is-full .stage-full { background: #57b6e6; }
+
+/* ---------- Gezeichnete Item-Icons ---------- */
+.item-art { display: block; user-select: none; -webkit-user-drag: none; }
+.sabo-card { align-items: center; text-align: center; gap: 4px; min-height: 0; }
+.sabo-card .card-art { width: min(190px, 62%); height: auto; filter: drop-shadow(4px 5px 0 rgba(27, 22, 48, .35)); transition: transform .15s; }
+.sabo-card:hover .card-art, .sabo-card.chosen .card-art { transform: scale(1.08) rotate(-4deg); }
+.sabo-card .card-title { font-size: clamp(2rem, 3.4vw, 3rem); }
+.sabo-card kbd { align-self: flex-start; }
+.tag .tag-art { display: inline-block; width: 1.9em; height: 1.9em; margin: -.35em .1em -.35em -.25em; vertical-align: middle; }
+.ph-opt.has-art { align-items: center; text-align: center; padding: 10px 12px 12px; gap: 2px; }
+.ph-art { width: auto; height: clamp(70px, 34vh, 150px); filter: drop-shadow(3px 4px 0 rgba(27, 22, 48, .35)); }
+.ph-opt.has-art .ph-opt-label { font-size: clamp(1.3rem, 6vh, 2rem); }

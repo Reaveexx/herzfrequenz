@@ -1049,21 +1049,36 @@ const Stage = (() => {
     }
 
     // Füße
-    [-1, 1].forEach(s => { blob(g, oval(210 + s * 46, FEET - 12, 36, 14, 8, r, 3)); g.fillStyle = INK; g.fill(); });
+    [-1, 1].forEach(s => {
+      const up = (mood === 'walk1' && s < 0) || (mood === 'walk2' && s > 0) ? 20 : 0;
+      blob(g, oval(210 + s * 46 + (up ? s * -6 : 0), FEET - 12 - up, 36, 14, 8, r, 3)); g.fillStyle = INK; g.fill();
+    });
 
     const arm = (sx, sy, hx, hy) => {
       g.beginPath(); g.moveTo(sx, sy); g.quadraticCurveTo((sx + hx) / 2 + (hx > sx ? 16 : -16), (sy + hy) / 2 + 6, hx, hy);
       g.strokeStyle = INK; g.lineWidth = 31; g.stroke(); g.strokeStyle = color; g.lineWidth = 17; g.stroke();
       blob(g, oval(hx, hy, 24, 22, 8, r, 3)); g.fillStyle = color; g.fill(); ink(g, 7);
     };
-    const sy = ey + 52;
-    const hands = {
-      idle: [[80, ey + 112], [340, ey + 112]], blink: [[80, ey + 112], [340, ey + 112]],
-      wave: [[80, ey + 112], [356, ey - 62]], cheer: [[60, ey - 84], [360, ey - 84]],
-      sad: [[94, ey + 138], [326, ey + 138]], think: [[80, ey + 112], null]
-    }[mood];
-    arm(116, sy, hands[0][0], hands[0][1]);
-    if (hands[1]) arm(304, sy, hands[1][0], hands[1][1]);
+    // Posen: b = Arme hinter dem Körper [links, rechts] als Handposition,
+    //        f = Arme vor dem Körper als [Schulter x, y, Hand x, y]
+    const sy = ey + 52, A = ey + 112;
+    const rest = [[80, A], [340, A]];
+    const POSE = {
+      idle: { b: rest }, blink: { b: rest }, lookL: { b: rest }, lookR: { b: rest },
+      smile: { b: [[68, ey + 92], [352, ey + 92]] },
+      wave: { b: [[80, A], [356, ey - 62]] }, wave2: { b: [[80, A], [384, ey - 26]] },
+      cheer: { b: [[60, ey - 84], [360, ey - 84]] }, cheer2: { b: [[40, ey - 44], [380, ey - 44]] },
+      sad: { b: [[94, ey + 138], [326, ey + 138]] },
+      think: { b: [[80, A], null], f: [[318, ey + 128, 262, ey + 104]] },
+      think2: { b: [null, [340, A]], f: [[102, ey + 128, 158, ey + 104]] },
+      nervous: { b: [null, null], f: [[108, ey + 124, 172, ey + 92], [312, ey + 124, 248, ey + 92]] },
+      laugh: { b: [null, null], f: [[104, ey + 112, 166, ey + 156], [316, ey + 112, 254, ey + 156]] },
+      ohh: { b: [[52, ey + 24], [368, ey + 24]] },
+      angry: { b: [[62, ey + 66], [358, ey + 66]] },
+      walk1: { b: [[66, ey + 80], [356, ey + 134]] }, walk2: { b: [[90, ey + 136], [330, ey + 78]] }
+    }[mood] || { b: rest };
+    if (POSE.b[0]) arm(116, sy, POSE.b[0][0], POSE.b[0][1]);
+    if (POSE.b[1]) arm(304, sy, POSE.b[1][0], POSE.b[1][1]);
 
     // Körper mit Rasterschatten und Glanzlicht
     const body = B.pts.map(([x, y]) => [x + (r() - .5) * 8, y + (r() - .5) * 8]);
@@ -1077,11 +1092,11 @@ const Stage = (() => {
     blob(g, body); ink(g, 10);
 
     // Gesicht
-    const eyes = (px, py) => [-1, 1].forEach(s => {
+    const eyes = (px, py, pr = 16) => [-1, 1].forEach(s => {
       const cx = 210 + s * EX;
       blob(g, oval(cx, ey, 30, 37, 10, r, 3)); g.fillStyle = '#fff'; g.fill(); ink(g, 6);
-      g.fillStyle = INK; g.beginPath(); g.arc(cx + px, ey + py, 16, 0, 7); g.fill();
-      g.fillStyle = '#fff'; g.beginPath(); g.arc(cx + px - 5, ey + py - 6, 5.5, 0, 7); g.fill();
+      g.fillStyle = INK; g.beginPath(); g.arc(cx + px, ey + py, pr, 0, 7); g.fill();
+      g.fillStyle = '#fff'; g.beginPath(); g.arc(cx + px - pr * .3, ey + py - pr * .38, pr * .34, 0, 7); g.fill();
     });
     const arcs = up => [-1, 1].forEach(s => {
       const cx = 210 + s * EX;
@@ -1098,31 +1113,52 @@ const Stage = (() => {
       g.save(); g.clip(); g.fillStyle = '#ff8fa3'; g.beginPath(); g.ellipse(214, my + d * .86, w * .55, d * .42, 0, 0, 7); g.fill(); g.restore();
       stroke(7);
     };
-    if (mood === 'idle') {
-      eyes(0, 3);
-      g.beginPath(); g.moveTo(188, my); g.quadraticCurveTo(210, my + 22, 234, my - 2); stroke(7);
-    } else if (mood === 'blink') {
-      arcs(false);
-      g.beginPath(); g.moveTo(188, my); g.quadraticCurveTo(210, my + 22, 234, my - 2); stroke(7);
-    } else if (mood === 'wave') {
-      eyes(0, 0); brow(-1, 2, 4); brow(1, 2, 4); openMouth(27, 22);
-    } else if (mood === 'cheer') {
-      arcs(true); openMouth(38, 32);
-      [[70, B.top - 6, -1], [350, B.top - 6, 1]].forEach(([x, y, s]) => { for (let i = 0; i < 3; i++) { const a = -Math.PI / 2 + s * (.3 + i * .45); g.beginPath(); g.moveTo(x + Math.cos(a) * 16, y + Math.sin(a) * 16 - 70); g.lineTo(x + Math.cos(a) * 36, y + Math.sin(a) * 36 - 70); stroke(6); } });
+    const grin = () => { g.beginPath(); g.moveTo(188, my); g.quadraticCurveTo(210, my + 22, 234, my - 2); stroke(7); };
+    const drop = (tx, ty) => {
+      g.beginPath(); g.moveTo(tx, ty - 18); g.quadraticCurveTo(tx + 16, ty + 10, tx, ty + 14); g.quadraticCurveTo(tx - 16, ty + 10, tx, ty - 18);
+      g.fillStyle = '#8fd6ff'; g.fill(); stroke(5);
+    };
+    const teeth = (w, h) => {   // zusammengebissene Zähne
+      blob(g, [[210 - w, my - h], [210 + w, my - h], [210 + w, my + h], [210 - w, my + h]]); g.fillStyle = '#fff'; g.fill(); stroke(6);
+      [-w * .5, 0, w * .5].forEach(x => { g.beginPath(); g.moveTo(210 + x, my - h * .7); g.lineTo(210 + x, my + h * .7); stroke(3.5); });
+      g.beginPath(); g.moveTo(210 - w * .86, my); g.lineTo(210 + w * .86, my); stroke(3.5);
+    };
+    const sparks = () => [[70, B.top - 6, -1], [350, B.top - 6, 1]].forEach(([x, y, sd]) => { for (let i = 0; i < 3; i++) { const an = -Math.PI / 2 + sd * (.3 + i * .45); g.beginPath(); g.moveTo(x + Math.cos(an) * 16, y + Math.sin(an) * 16 - 70); g.lineTo(x + Math.cos(an) * 36, y + Math.sin(an) * 36 - 70); stroke(6); } });
+
+    if (mood === 'idle') { eyes(0, 3); grin(); }
+    else if (mood === 'lookL') { eyes(-11, 3); grin(); }
+    else if (mood === 'lookR') { eyes(11, 3); grin(); }
+    else if (mood === 'blink') { arcs(false); grin(); }
+    else if (mood === 'smile') { arcs(true); openMouth(26, 17); }
+    else if (mood === 'wave' || mood === 'wave2') { eyes(mood === 'wave2' ? 5 : 0, 0); brow(-1, 2, 4); brow(1, 2, 4); openMouth(27, 22); }
+    else if (mood === 'cheer' || mood === 'cheer2') { arcs(true); openMouth(mood === 'cheer' ? 38 : 32, mood === 'cheer' ? 32 : 24); if (mood === 'cheer') sparks(); }
+    else if (mood === 'laugh') {
+      arcs(true); openMouth(42, 38);
+      drop(210 - EX - 34, ey + 26); drop(210 + EX + 34, ey + 26);   // Lachtränen
     } else if (mood === 'sad') {
       eyes(0, 12); brow(-1, 10, 2); brow(1, 10, 2);
       g.beginPath(); g.moveTo(186, my + 16); g.quadraticCurveTo(198, my - 6, 212, my + 2); g.quadraticCurveTo(224, my - 2, 236, my + 16); stroke(7);
-      const tx = 210 - EX - 26, ty = ey + 44;
-      g.beginPath(); g.moveTo(tx, ty - 16); g.quadraticCurveTo(tx + 15, ty + 10, tx, ty + 14); g.quadraticCurveTo(tx - 15, ty + 10, tx, ty - 16);
-      g.fillStyle = '#8fd6ff'; g.fill(); stroke(5);
-    } else if (mood === 'think') {
-      eyes(-8, -12); brow(-1, -3, 14); brow(1, 5, 0);
+      drop(210 - EX - 26, ey + 44);
+    } else if (mood === 'think' || mood === 'think2') {
+      const d = mood === 'think' ? -1 : 1;
+      eyes(8 * d, -12); brow(-1, d < 0 ? -3 : 5, d < 0 ? 14 : 0); brow(1, d < 0 ? 5 : -3, d < 0 ? 0 : 14);
       g.beginPath(); g.moveTo(184, my + 6); g.quadraticCurveTo(196, my - 8, 208, my + 4); g.quadraticCurveTo(218, my + 14, 228, my + 2); stroke(7);
-      arm(318, ey + 128, 262, ey + 104);
-      const tx = 318, ty = B.top + 34;   // Schweißtropfen
-      g.beginPath(); g.moveTo(tx, ty - 18); g.quadraticCurveTo(tx + 16, ty + 10, tx, ty + 14); g.quadraticCurveTo(tx - 16, ty + 10, tx, ty - 18);
-      g.fillStyle = '#8fd6ff'; g.fill(); stroke(5);
-    }
+      drop(d < 0 ? 318 : 102, B.top + 34);   // Schweißtropfen
+    } else if (mood === 'nervous') {
+      eyes(0, 2, 9); brow(-1, 9, 10); brow(1, 9, 10); teeth(30, 13);
+      drop(318, B.top + 34); drop(104, B.top + 50);
+    } else if (mood === 'angry') {
+      eyes(0, 6, 13); brow(-1, -13, -24); brow(1, -13, -24); teeth(28, 11);
+      g.save(); g.translate(330, B.top + 6); g.strokeStyle = RED; g.lineWidth = 8;   // Wut-Zeichen
+      [0, 1, 2, 3].forEach(q => { g.save(); g.rotate(q * Math.PI / 2); g.beginPath(); g.moveTo(7, 20); g.quadraticCurveTo(7, 7, 20, 7); g.stroke(); g.restore(); });
+      g.restore();
+    } else if (mood === 'ohh') {
+      eyes(0, 0, 9); brow(-1, 0, 18); brow(1, 0, 18);
+      g.beginPath(); g.ellipse(210, my + 8, 17, 23, 0, 0, 7); g.fillStyle = '#7a1f2b'; g.fill(); stroke(7);
+    } else if (mood === 'walk1' || mood === 'walk2') {
+      eyes(9, 2); brow(-1, -2, 6); brow(1, 2, 6); openMouth(22, 15);
+    } else { eyes(0, 3); grin(); }
+    if (POSE.f) POSE.f.forEach(q => arm(q[0], q[1], q[2], q[3]));   // Arme vor dem Körper
 
     // Erkennungszeichen vor dem Körper
     if (style === 0) {   // Partyhut
@@ -1145,12 +1181,38 @@ const Stage = (() => {
     return sticker(c, 9);
   }
 
+  const LOOKS = ['idle', 'blink', 'lookL', 'lookR', 'smile', 'wave', 'wave2', 'cheer', 'cheer2', 'sad', 'think', 'think2', 'nervous', 'laugh', 'ohh', 'angry', 'walk1', 'walk2'];
   const figTex = new Map();
   function figureTex(style, color, mood) {
     const key = style + color + mood;
     let t = figTex.get(key);
-    if (!t) { const c = drawFigure(style, color, mood); t = { front: tex(c), sil: tex(silhouette(c)) }; figTex.set(key, t); }
+    if (!t) {
+      // auf 75 % verkleinert speichern: spart Grafikspeicher bei 18 Zeichnungen pro Figur
+      const big = drawFigure(style, color, LOOKS.includes(mood) ? mood : 'idle');
+      const [c, g] = mk(Math.round(FW * .75), Math.round(FH * .75));
+      g.drawImage(big, 0, 0, c.width, c.height);
+      // Kartonrand passend zur Pose, als kleine Textur (er ist nur eine einfarbige Fläche)
+      const [sc, sg] = mk(Math.round(FW * .4), Math.round(FH * .4));
+      sg.drawImage(c, 0, 0, sc.width, sc.height);
+      t = { front: tex(c), sil: tex(silhouette(sc)) };
+      figTex.set(key, t);
+    }
     return t;
+  }
+  // Zeichnungen nach und nach vorbereiten, damit beim ersten Gesichtswechsel nichts ruckelt
+  const warmQueue = [];
+  let warming = false;
+  function warm(style, color) {
+    LOOKS.forEach(l => warmQueue.push([style, color, l]));
+    if (warming) return;
+    warming = true;
+    const step = () => {
+      const job = warmQueue.shift();
+      if (!job) { warming = false; return; }
+      figureTex(job[0], job[1], job[2]);
+      setTimeout(step, 30);
+    };
+    setTimeout(step, 200);
   }
   const shadowT = (() => {
     const [c, g] = mk(128, 64);
@@ -1184,7 +1246,7 @@ const Stage = (() => {
     const tag = document.createElement('div');
     tag.className = 'fig-tag';
     labels.append(label, tag);
-    return { id: p.id, style: index % 4, color: p.color, g, card, layers, frontM, shadow, label, tag, shown: '', pos: new T.Vector3(0, 9, 3), fresh: true, face: 1, faceGoal: 1, walk: null, gone: false, mood: 'idle', jumpT: -9, phase: Math.random() * 6, blinkAt: now() + 1 + Math.random() * 3, pops: [] };
+    return { id: p.id, style: index % 4, color: p.color, g, card, layers, frontM, shadow, label, tag, shown: '', pos: new T.Vector3(0, 9, 3), fresh: true, face: 1, faceGoal: 1, walk: null, gone: false, mood: 'idle', act: 'idle', actUntil: 0, hopT: -9, jumpT: -9, phase: Math.random() * 6, blinkAt: now() + 1 + Math.random() * 3, pops: [] };
   }
 
   function setPlayers(list) {
@@ -1202,6 +1264,7 @@ const Stage = (() => {
       let f = figs.get(p.id);
       if (!f) { f = makeFig(p, i); figs.set(p.id, f); }
       if (f.color !== p.color) { f.color = p.color; f.shown = ''; }
+      if (f.warmed !== p.color) { f.warmed = p.color; warm(f.style, p.color); }
       f.tag.style.setProperty('--pc', p.color);
       f.label.style.setProperty('--pc', p.color);
       f.tag.textContent = p.name;
@@ -1485,6 +1548,25 @@ const Stage = (() => {
   /* ---------- Animation ---------- */
   function project(x, y, z) { v.set(x, y, z).project(camera); return [(v.x * 0.5 + 0.5) * W, (-v.y * 0.5 + 0.5) * H]; }
 
+  /* Stehen ist nicht starr: Blinzeln, zur Seite schauen, lächeln, kurz winken, kleiner Hüpfer. */
+  function idleLook(f, t) {
+    const base = f.mood === 'smile' ? 'smile' : 'idle';
+    if (t > f.actUntil) {
+      if (f.act !== base) { f.act = base; f.actUntil = t + 0.9 + Math.random() * 2.2; }
+      else {
+        const roll = Math.random();
+        if (roll < 0.3) { f.act = 'blink'; f.actUntil = t + 0.13; }
+        else if (roll < 0.48) { f.act = 'lookL'; f.actUntil = t + 0.6 + Math.random() * 0.9; }
+        else if (roll < 0.66) { f.act = 'lookR'; f.actUntil = t + 0.6 + Math.random() * 0.9; }
+        else if (roll < 0.8) { f.act = base === 'idle' ? 'smile' : 'idle'; f.actUntil = t + 0.9 + Math.random(); }
+        else if (roll < 0.9) { f.act = 'wave'; f.actUntil = t + 1.1; }
+        else { f.hopT = t; f.actUntil = t + 0.8; }
+      }
+    }
+    if (f.act === 'wave') return Math.floor((t + f.phase) * 3.4) % 2 ? 'wave2' : 'wave';
+    return f.act;
+  }
+
   function updateFig(f, t, dt) {
     f.g.visible = !f.gone;
     f.label.hidden = f.gone; f.tag.hidden = f.gone || !!f.leaving;
@@ -1499,6 +1581,7 @@ const Stage = (() => {
         f.pos.lerpVectors(w.from, w.to, e);
         ground = w.from.y - w.to.y > 5 ? w.to.y : f.pos.y;
         const beat = e * Math.PI * w.hops;
+        look = Math.floor(beat / Math.PI) % 2 ? 'walk2' : 'walk1';   // Arme und Füße schwingen im Schritt
         hop = Math.abs(Math.sin(beat)) * 0.38;
         tilt = Math.cos(beat) * 0.16 * wob;
         const dx = w.to.x - w.from.x;
@@ -1517,9 +1600,25 @@ const Stage = (() => {
         if (mode === 'title') { const bp = (beatNow + f.order) % 2; if (bp < 1) hop += Math.sin(bp * Math.PI) * 0.34 * wob; }
       }
       else if (f.mood === 'think') { tilt = Math.sin(t * 1.9 + f.phase) * 0.08 * wob; }
+      else if (f.mood === 'smile') { tilt = Math.sin(t * 2.4 + f.phase) * 0.07 * wob; }
+      else if (f.mood === 'nervous') { tilt = Math.sin(t * 23 + f.phase) * 0.028 * wob; sx = 1 + Math.sin(t * 31) * 0.012 * wob; }
+      else if (f.mood === 'angry') { tilt = Math.sin(t * 15 + f.phase) * 0.035 * wob; hop += Math.max(0, Math.sin(t * 9 + f.phase)) * 0.09 * wob; }
+      else if (f.mood === 'laugh') { hop += Math.abs(Math.sin((t + f.phase) * 11)) * 0.11 * wob; tilt = Math.sin(t * 5.5 + f.phase) * 0.06 * wob; }
+      else if (f.mood === 'ohh') { sy = 1.05; tilt = -0.06; }
+      // Mimik und Gestik: jede Stimmung wechselt zwischen mehreren Zeichnungen
+      const ph = t + f.phase;
+      if (f.mood === 'idle' || f.mood === 'smile') {
+        look = idleLook(f, t);
+        if (look === 'lookL') tilt -= 0.05; else if (look === 'lookR') tilt += 0.05;
+        const hk = (t - f.hopT) / 0.36;
+        if (hk > 0 && hk < 1) hop += Math.sin(hk * Math.PI) * 0.24 * wob;
+      }
+      else if (f.mood === 'wave') look = Math.floor(ph * 3.4) % 2 ? 'wave2' : 'wave';
+      else if (f.mood === 'cheer') look = Math.floor(ph * 4.2) % 2 ? 'cheer2' : 'cheer';
+      else if (f.mood === 'think') look = Math.floor(ph * 0.42) % 2 ? 'think2' : 'think';
+      else if (f.mood === 'laugh') look = Math.floor(ph * 5) % 2 ? 'laugh' : 'smile';
     }
     if (hop > 0) { sy += hop * 0.14; sx -= hop * 0.07; }
-    if (look === 'idle' && t > f.blinkAt) { look = 'blink'; if (t > f.blinkAt + 0.13) f.blinkAt = t + 2 + Math.random() * 3; }
     if (f.shown !== look) {
       f.shown = look;
       const tx = figureTex(f.style, f.color, look);
