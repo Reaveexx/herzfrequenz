@@ -24,7 +24,7 @@ const Stage = (() => {
   const T = window.THREE;
   const noop = () => {};
   const done = () => Promise.resolve();
-  const fallback = { ok: false, mount: noop, setPlayers: noop, setInsets: noop, setDoors: noop, pointDoor: noop, dim: noop, voteWalk: done, openDoor: done, enterDoor: done, layout: done, setLabel: noop, setAnswers: noop, lock: noop, walkToPads: done, reveal: noop, pop: noop, climb: done, mood: noop };
+  const fallback = { ok: false, mount: noop, setPlayers: noop, setInsets: noop, setDoors: noop, pointDoor: noop, dim: noop, titleKick: noop, voteWalk: done, openDoor: done, enterDoor: done, layout: done, setLabel: noop, setAnswers: noop, lock: noop, walkToPads: done, reveal: noop, pop: noop, climb: done, mood: noop };
   if (!T) return fallback;
 
   let renderer;
@@ -371,6 +371,313 @@ const Stage = (() => {
     });
   })();
 
+  /* ---------- Titelwelt: eine eigene Papier-Landschaft nur für den Titelbildschirm ---------- */
+  // Himmel mit Strahlensonne, drei Hügelketten, Wolken, Ballon und ein gestreiftes Quiz-Zelt.
+  // Davor klappt das Logo wie in einem Pop-up-Buch aus dem Boden; das O ist eine Walnuss.
+  // Alles wippt im Takt der Titelmusik (music.js).
+  const studioParts = scene.children.slice();   // alles bisher Gebaute gehört zum Quiz-Studio
+  const world = new T.Group();
+  world.visible = false;
+  scene.add(world);
+  const SKY = new T.Color('#57b6e6');
+  const LOGO = 'KOPFNUSS', LOGO_Z = -4.5;
+  let titleT0 = -99, kickT = -99, beatNow = 0;
+
+  // Himmel
+  (() => {
+    const [c, g] = mk(256, 1024);
+    const grad = g.createLinearGradient(0, 0, 0, 1024);
+    grad.addColorStop(0, '#2a78cf'); grad.addColorStop(.5, '#57b6e6'); grad.addColorStop(.8, '#bfe8f4'); grad.addColorStop(1, '#fff1c0');
+    g.fillStyle = grad; g.fillRect(0, 0, 256, 1024);
+    halftone(g, 0, 300, 256, 1024, 20, 'rgba(255,255,255,.28)', (x, y) => (y - 380) / 700);
+    const m = new T.Mesh(new T.PlaneGeometry(320, 130), flatMat(c));
+    m.position.set(0, 44, -50);
+    world.add(m);
+  })();
+
+  // Sonne mit drehendem Strahlenkranz
+  const sun = (() => {
+    const [rc, rg] = mk(900, 900);
+    for (let i = 0; i < 16; i++) {
+      const a = i / 16 * Math.PI * 2, w = 0.11;
+      rg.beginPath(); rg.moveTo(450 + Math.cos(a - w) * 190, 450 + Math.sin(a - w) * 190);
+      rg.lineTo(450 + Math.cos(a) * (i % 2 ? 440 : 380), 450 + Math.sin(a) * (i % 2 ? 440 : 380));
+      rg.lineTo(450 + Math.cos(a + w) * 190, 450 + Math.sin(a + w) * 190); rg.closePath();
+      rg.fillStyle = i % 2 ? '#ffe680' : '#fff3b0'; rg.fill(); ink(rg, 7);
+    }
+    const rays = new T.Mesh(new T.PlaneGeometry(19, 19), cutMat(tex(rc)));
+    rays.position.set(-15, 12, -44);
+    const [dc, dg] = mk(420, 420), r = rnd(12);
+    blob(dg, oval(210, 210, 160, 160, 12, r, 8)); dg.fillStyle = SUN; dg.fill();
+    dg.save(); dg.clip(); halftone(dg, 0, 0, 420, 420, 16, '#f59f2a', (x, y) => (x - 120) / 420 + (y - 160) / 420); dg.restore();
+    blob(dg, oval(210, 210, 160, 160, 12, rnd(12), 8)); ink(dg, 10);
+    // zufriedenes Gesicht
+    dg.strokeStyle = INK; dg.lineWidth = 11;
+    [-1, 1].forEach(s => { dg.beginPath(); dg.arc(210 + s * 62, 190, 26, Math.PI * 1.1, Math.PI * 1.9); dg.stroke(); });
+    dg.beginPath(); dg.arc(210, 236, 52, Math.PI * .15, Math.PI * .85); dg.stroke();
+    dg.fillStyle = '#ff9d8a'; [-1, 1].forEach(s => { dg.beginPath(); dg.ellipse(210 + s * 104, 236, 22, 14, 0, 0, 7); dg.fill(); });
+    const disc = new T.Mesh(new T.PlaneGeometry(8.9, 8.9), cutMat(tex(sticker(dc, 7))));
+    disc.position.set(-15, 12, -43.9);
+    world.add(rays, disc);
+    return { rays, disc };
+  })();
+
+  // Hügelketten, hinten hell und vorne satt
+  function drawHills(seed, color, dark, trees) {
+    const [c, g] = mk(2048, 560), r = rnd(seed);
+    const ph = r() * 6, top = x => 290 + Math.sin(x / 2048 * Math.PI * 5 + ph) * 60 + Math.sin(x / 2048 * Math.PI * 13 + ph * 2) * 22;
+    const outline = () => { g.beginPath(); g.moveTo(-10, 570); for (let x = -10; x <= 2058; x += 16) g.lineTo(x, top(x)); g.lineTo(2058, 570); g.closePath(); };
+    if (trees) {   // Lutscher-Bäume auf dem Kamm
+      for (let x = 60; x < 2000; x += 120 + r() * 170) {
+        const y = top(x), h = 60 + r() * 50, cr = 34 + r() * 22;
+        g.beginPath(); g.moveTo(x, y + 10); g.lineTo(x, y - h); g.strokeStyle = INK; g.lineWidth = 10; g.stroke(); g.strokeStyle = CARD; g.lineWidth = 5; g.stroke();
+        blob(g, oval(x, y - h - cr * .5, cr * .55, cr * 1.15, 9, r, 5)); g.fillStyle = [dark, '#3fae6d', '#69c98a'][Math.floor(r() * 3)]; g.fill(); ink(g, 6);
+      }
+    }
+    outline(); g.fillStyle = color; g.fill();
+    g.save(); g.clip(); halftone(g, 0, 200, 2048, 560, 17, dark, (x, y) => (y - top(x) - 30) / 240); g.restore();
+    g.beginPath(); for (let x = -10; x <= 2058; x += 16) g.lineTo(x, top(x));
+    g.strokeStyle = PAPER; g.lineWidth = 16; g.stroke(); g.strokeStyle = INK; g.lineWidth = 7; g.stroke();
+    grain(g, 2048, 560);
+    return c;
+  }
+  [[-36, 120, 18, 201, '#a5dcb4', '#86c79a', false], [-26, 100, 12.6, 202, '#74c98f', '#54ad73', true], [-17, 84, 8.6, 203, '#48b272', '#2f9459', true]].forEach(([z, w, h, seed, col, dark, trees], i) => {
+    const m = new T.Mesh(new T.PlaneGeometry(w, h).translate(0, h / 2, 0), cutMat(tex(drawHills(seed, col, dark, trees))));
+    m.position.set(i * 3 - 3, -1.2, z);
+    world.add(m);
+  });
+
+  // Wiese: gekacheltes Gras, darauf ein Weg, der sich nach rechts hinten zum Zelt schlängelt
+  (() => {
+    const [c, g] = mk(256, 256), r = rnd(44);
+    g.fillStyle = '#5fc27f'; g.fillRect(0, 0, 256, 256);
+    halftone(g, 0, 0, 256, 256, 16, '#52b272', (x, y) => .3 + Math.sin(x / 41) * .25 + Math.sin(y / 41) * .25);
+    for (let i = 0; i < 5; i++) {
+      const x = 30 + r() * 196, y = 40 + r() * 190;
+      g.beginPath(); g.moveTo(x - 9, y); g.lineTo(x - 5, y - 15); g.moveTo(x, y); g.lineTo(x, y - 20); g.moveTo(x + 9, y); g.lineTo(x + 6, y - 14);
+      g.strokeStyle = '#2f9459'; g.lineWidth = 4; g.stroke();
+    }
+    g.beginPath(); g.arc(200, 60, 8, 0, 7); g.fillStyle = PAPER; g.fill(); g.strokeStyle = INK; g.lineWidth = 3; g.stroke();
+    g.beginPath(); g.arc(70, 190, 8, 0, 7); g.fillStyle = SUN; g.fill(); g.stroke();
+    const t = tex(c);
+    t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(60, 30);
+    const grass = new T.Mesh(new T.PlaneGeometry(420, 210), new T.MeshBasicMaterial({ map: t }));
+    grass.rotation.x = -Math.PI / 2; grass.position.set(0, -0.02, 40);
+    // Weg: Fläche 26 × 34, oben = hinten am Zelt
+    const [pc, pg] = mk(780, 1020);
+    const path = () => {
+      pg.beginPath(); pg.moveTo(170, 1020);
+      pg.bezierCurveTo(200, 800, 250, 640, 330, 480); pg.bezierCurveTo(380, 380, 430, 280, 462, 150);
+      pg.lineTo(548, 150);
+      pg.bezierCurveTo(520, 300, 480, 420, 440, 520); pg.bezierCurveTo(400, 660, 400, 820, 420, 1020);
+      pg.closePath();
+    };
+    path(); pg.fillStyle = '#f6e3b4'; pg.fill();
+    pg.save(); pg.clip(); halftone(pg, 0, 0, 780, 1020, 17, '#e6cb90', (x, y) => (x - 300) / 300); pg.restore();
+    path(); pg.strokeStyle = PAPER; pg.lineWidth = 16; pg.stroke(); pg.strokeStyle = INK; pg.lineWidth = 7; pg.stroke();
+    grain(pg, 780, 1020);
+    const way = new T.Mesh(new T.PlaneGeometry(26, 34), cutMat(tex(pc)));
+    way.rotation.x = -Math.PI / 2; way.position.set(3.5, 0.01, -1);
+    way.renderOrder = -1;
+    world.add(grass, way);
+  })();
+
+  // Wolken, hängen an Fäden und ziehen langsam vorbei
+  const skyClouds = [[-22, 16.5, -36, 9, .5], [-4, 19, -38, 7, .35], [15, 12, -32, 8, .45], [30, 17.5, -37, 10, .3], [-36, 11.5, -30, 6.5, .55]].map(([x, y, z, w, sp], i) => {
+    const [c, g] = mk(560, 300), r = rnd(300 + i);
+    blob(g, [[40, 230], [30, 150], [120, 110], [160, 40], [280, 30], [350, 80], [450, 70], [530, 150], [520, 230], [280, 250]]);
+    g.fillStyle = PAPER; g.fill();
+    g.save(); g.clip(); halftone(g, 0, 120, 560, 300, 15, '#cfe3f1', (x2, y2) => (y2 - 150) / 110); g.restore();
+    blob(g, [[40, 230], [30, 150], [120, 110], [160, 40], [280, 30], [350, 80], [450, 70], [530, 150], [520, 230], [280, 250]]); ink(g, 8);
+    void r;
+    const m = new T.Mesh(new T.PlaneGeometry(w, w * 300 / 560), cutMat(tex(sticker(c, 6))));
+    const thread = new T.Mesh(new T.PlaneGeometry(.05, 30).translate(0, 15 + w * .12, -.02), new T.MeshBasicMaterial({ color: INK }));
+    m.add(thread);
+    m.position.set(x, y, z);
+    world.add(m);
+    return { m, x, y, sp, ph: i * 1.7 };
+  });
+
+  // Quiz-Zelt
+  const tent = (() => {
+    const [c, g] = mk(1200, 1080), r = rnd(55);
+    // Fahne
+    g.beginPath(); g.moveTo(600, 150); g.lineTo(600, 20); g.strokeStyle = INK; g.lineWidth = 12; g.stroke();
+    g.beginPath(); g.moveTo(604, 26); g.lineTo(740, 62); g.lineTo(604, 100); g.closePath(); g.fillStyle = SUN; g.fill(); ink(g, 8);
+    // Zeltwand mit Streifen
+    const wall = () => { g.beginPath(); g.moveTo(170, 560); g.lineTo(1030, 560); g.lineTo(1000, 1060); g.lineTo(200, 1060); g.closePath(); };
+    wall(); g.fillStyle = PAPER; g.fill();
+    g.save(); g.clip();
+    for (let i = 0; i < 9; i += 2) { g.fillStyle = RED; g.fillRect(170 + i * 96, 540, 96, 560); }
+    halftone(g, 170, 560, 1030, 1060, 18, 'rgba(27,22,48,.13)', (x, y) => (x - 600) / 700 + (y - 760) / 600);
+    g.restore(); wall(); ink(g, 10);
+    // Dach: Streifen laufen in der Spitze zusammen
+    const roof = () => { g.beginPath(); g.moveTo(600, 140); g.quadraticCurveTo(820, 330, 1110, 590); g.lineTo(90, 590); g.quadraticCurveTo(380, 330, 600, 140); g.closePath(); };
+    roof(); g.fillStyle = RED; g.fill();
+    g.save(); g.clip();
+    for (let i = 0; i < 10; i += 2) { g.beginPath(); g.moveTo(600, 120); g.lineTo(90 + i * 102, 600); g.lineTo(90 + (i + 1) * 102, 600); g.closePath(); g.fillStyle = PAPER; g.fill(); }
+    halftone(g, 90, 140, 1110, 600, 18, 'rgba(27,22,48,.14)', (x, y) => (x - 620) / 600 + (y - 380) / 500);
+    g.restore(); roof(); ink(g, 10);
+    // Zackenrand
+    for (let i = 0; i < 10; i++) { g.beginPath(); g.arc(141 + i * 102, 592, 51, 0, Math.PI); g.closePath(); g.fillStyle = i % 2 ? SUN : '#ffe680'; g.fill(); ink(g, 8); }
+    // Eingang mit zurückgebundenem Vorhang
+    g.beginPath(); g.moveTo(450, 1060); g.lineTo(450, 800); g.quadraticCurveTo(600, 660, 750, 800); g.lineTo(750, 1060); g.closePath(); g.fillStyle = '#231a44'; g.fill(); ink(g, 10);
+    [[450, 1], [750, -1]].forEach(([x, s]) => { g.beginPath(); g.moveTo(x, 800); g.quadraticCurveTo(x + s * 120, 900, x + s * 16, 1060); g.lineTo(x, 1060); g.closePath(); g.fillStyle = SUN; g.fill(); ink(g, 7); });
+    // Schild
+    g.save(); g.translate(600, 690); g.rotate(-.04);
+    box(g, -150, -58, 300, 116, r, 6); g.fillStyle = PAPER; g.fill(); ink(g, 8);
+    fitText(g, 'QUIZ!', 0, 2, 250, 96, 96, RED, INK);
+    g.restore();
+    grain(g, 1200, 1080);
+    const o = standee(sticker(c, 8), 10.6, 9.54, { layers: 2 });
+    o.position.set(7.4, -.15, -13);
+    world.add(o);
+    return o;
+  })();
+
+  // Heißluftballon
+  const balloon = (() => {
+    const [c, g] = mk(400, 580), r = rnd(66);
+    const hull = () => blob(g, [[200, 20], [330, 60], [372, 200], [300, 340], [240, 400], [160, 400], [100, 340], [28, 200], [70, 60]]);
+    hull(); g.fillStyle = PAPER; g.fill();
+    g.save(); g.clip();
+    TEAM.forEach((col, i) => { g.fillStyle = col; g.fillRect(28 + i * 88, 0, 44, 420); });
+    halftone(g, 0, 0, 400, 420, 16, 'rgba(27,22,48,.14)', (x, y) => (x - 180) / 300 + (y - 200) / 400);
+    g.restore(); hull(); ink(g, 9);
+    g.beginPath(); g.moveTo(160, 400); g.lineTo(170, 480); g.moveTo(240, 400); g.lineTo(230, 480); g.strokeStyle = INK; g.lineWidth = 6; g.stroke();
+    box(g, 160, 478, 80, 66, r, 4); g.fillStyle = CARD; g.fill(); ink(g, 8);
+    g.beginPath(); g.arc(200, 200, 62, 0, 7); g.fillStyle = PAPER; g.fill(); ink(g, 8);
+    fitText(g, '?', 200, 204, 100, 110, 110, INK);
+    const o = new T.Mesh(new T.PlaneGeometry(3.6, 5.22), cutMat(tex(sticker(c, 7))));
+    world.add(o);
+    return o;
+  })();
+
+  // Büsche als Rahmen im Vordergrund
+  const bushes = [-1, 1].map(s => {
+    const [c, g] = mk(700, 380), r = rnd(80 + s);
+    const bush = () => blob(g, [[70, 366], [12, 320], [10, 250], [90, 170], [180, 190], [240, 90], [360, 70], [430, 150], [540, 120], [640, 200], [690, 290], [650, 356], [360, 372]]);
+    bush(); g.fillStyle = '#2f9459'; g.fill();
+    g.save(); g.clip(); halftone(g, 0, 60, 700, 380, 17, '#217a47', (x, y) => (y - 150) / 220); g.restore();
+    bush(); ink(g, 9);
+    for (let i = 0; i < 9; i++) { const x = 70 + r() * 560, y = 190 + r() * 150; g.beginPath(); g.arc(x, y, 15, 0, 7); g.fillStyle = [PAPER, SUN, '#ff9d8a'][i % 3]; g.fill(); ink(g, 5); g.beginPath(); g.arc(x, y, 5, 0, 7); g.fillStyle = INK; g.fill(); }
+    const o = standee(sticker(c, 7), 8.4, 4.56, { layers: 1 });
+    o.scale.x = s;
+    o.position.set(s * 12.5, -.1, 4.2);
+    world.add(o);
+    return o;
+  });
+
+  // Logo: jeder Buchstabe steht auf einem Stab und klappt aus dem Boden hoch
+  function drawLetter(ch, i) {
+    const [c, g] = mk(300, 340);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = `270px ${POW}`;
+    g.lineJoin = 'round';
+    g.fillStyle = RED; g.strokeStyle = RED; g.lineWidth = 32;
+    g.strokeText(ch, 164, 196); g.fillText(ch, 164, 196);          // roter Schatten
+    g.strokeStyle = INK; g.lineWidth = 32; g.strokeText(ch, 148, 178);
+    g.fillStyle = i < 4 ? PAPER : SUN; g.fillText(ch, 148, 178);
+    const [d, dg] = mk(300, 340);                                    // Rasterpunkte nur auf der Buchstabenfläche
+    dg.textAlign = 'center'; dg.textBaseline = 'middle'; dg.font = g.font;
+    dg.fillText(ch, 148, 178);
+    dg.globalCompositeOperation = 'source-in';
+    const [h, hg] = mk(300, 340);
+    halftone(hg, 0, 0, 300, 340, 15, i < 4 ? '#e6d9bd' : '#f59f2a', (x, y) => (y - 160) / 160);
+    dg.drawImage(h, 0, 0);
+    g.drawImage(d, 0, 0);
+    return sticker(c, 9);
+  }
+  // Das O: eine Walnuss mit Gesicht, das Maskottchen
+  function drawNut() {
+    const [c, g] = mk(300, 340), r = rnd(91);
+    const shell = () => blob(g, oval(150, 180, 104, 122, 12, rnd(91), 9));
+    g.save(); g.translate(14, 16); shell(); g.fillStyle = RED; g.fill(); g.restore();
+    shell(); g.fillStyle = '#c98f52'; g.fill();
+    g.save(); g.clip();
+    halftone(g, 0, 0, 300, 340, 15, '#a56d38', (x, y) => (x - 110) / 260 + (y - 150) / 320);
+    g.strokeStyle = '#8a5a2c'; g.lineWidth = 6;   // Rillen der Schale
+    for (let i = 0; i < 9; i++) { const x = 60 + r() * 180, y = 70 + r() * 80; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + 14, y + 16, x + 4, y + 34); g.stroke(); }
+    g.beginPath(); g.moveTo(150, 50); g.quadraticCurveTo(128, 180, 150, 310); g.lineWidth = 7; g.stroke();
+    g.restore();
+    shell(); ink(g, 11);
+    // Gesicht
+    [-1, 1].forEach(s => {
+      g.beginPath(); g.ellipse(150 + s * 40, 178, 27, 33, 0, 0, 7); g.fillStyle = PAPER; g.fill(); ink(g, 6);
+      g.beginPath(); g.arc(150 + s * 36, 184, 12, 0, 7); g.fillStyle = INK; g.fill();
+      g.beginPath(); g.arc(150 + s * 32, 178, 4, 0, 7); g.fillStyle = PAPER; g.fill();
+    });
+    g.beginPath(); g.arc(150, 228, 34, Math.PI * .12, Math.PI * .88); g.closePath(); g.fillStyle = '#7a2330'; g.fill(); ink(g, 6);
+    g.fillStyle = '#ff9d8a'; [-1, 1].forEach(s => { g.beginPath(); g.ellipse(150 + s * 78, 222, 15, 10, 0, 0, 7); g.fill(); });
+    // Pflaster von der Kopfnuss
+    g.save(); g.translate(196, 92); g.rotate(.5);
+    box(g, -34, -13, 68, 26, r, 3); g.fillStyle = '#ffe3c2'; g.fill(); ink(g, 5);
+    g.fillStyle = '#e0b48c'; g.fillRect(-10, -9, 20, 18);
+    g.restore();
+    return sticker(c, 9);
+  }
+  const stickM = new T.MeshBasicMaterial({ color: CARD });
+  const letters = [...LOGO].map((ch, i) => {
+    const grp = new T.Group();
+    const m = new T.Mesh(new T.PlaneGeometry(2.9, 3.28), cutMat(tex(i === 1 ? drawNut() : drawLetter(ch, i))));
+    const stick = new T.Mesh(new T.PlaneGeometry(.16, 1), stickM);
+    grp.add(stick, m);
+    grp.position.z = LOGO_Z + (i % 2) * 0.08;
+    world.add(grp);
+    return { grp, m, stick, ch, i, h: 5, x: 0, rot: [-.09, 0, -.05, .08, -.07, .04, -.05, .09][i] };
+  });
+  // Sternchen kreisen um die Nuss
+  const starT = (() => {
+    const [c, g] = mk(120, 120);
+    g.beginPath(); for (let k = 0; k < 10; k++) { const rad = k % 2 ? 22 : 50, a = k / 10 * Math.PI * 2 - Math.PI / 2; g.lineTo(60 + Math.cos(a) * rad, 60 + Math.sin(a) * rad); } g.closePath();
+    g.fillStyle = SUN; g.fill(); ink(g, 7);
+    return tex(c);
+  })();
+  const nutStars = [0, 1, 2].map(() => { const s = new T.Mesh(new T.PlaneGeometry(.7, .7), cutMat(starT)); letters[1].grp.add(s); return s; });
+
+  const banner = (() => {
+    const [c, g] = mk(1400, 190);
+    const m = new T.Mesh(new T.PlaneGeometry(10.2, 1.38), cutMat(null));
+    m.position.z = LOGO_Z + 0.35;
+    world.add(m);
+    return { c, g, m, y: 3.3, s: 1 };
+  })();
+  function drawBanner() {
+    const { c, g } = banner;
+    g.clearRect(0, 0, 1400, 190);
+    g.beginPath();   // Band mit eingeschnittenen Enden
+    g.moveTo(24, 40); g.lineTo(1376, 30); g.lineTo(1330, 96); g.lineTo(1376, 160); g.lineTo(30, 166); g.lineTo(72, 100); g.closePath();
+    g.fillStyle = PAPER; g.fill();
+    g.save(); g.clip(); halftone(g, 0, 0, 1400, 190, 16, '#f1e3c4', (x, y) => (y - 90) / 110); g.restore();
+    g.strokeStyle = INK; g.lineWidth = 9; g.stroke();
+    fitText(g, 'Das Quiz, bei dem du deine Freunde ausbremst!', 700, 100, 1180, 110, 78, INK);
+    banner.m.material.map = tex(sticker(c, 7));
+    banner.m.material.needsUpdate = true;
+  }
+  drawBanner();
+  function redrawLogo() {
+    letters.forEach(l => { if (l.i !== 1) { l.m.material.map = tex(drawLetter(l.ch, l.i)); l.m.material.needsUpdate = true; } });
+    drawBanner();
+  }
+  /* Ordnet das Logo je nach Fensterform an: breit in einer Zeile, hoch in zwei. */
+  let titleHalf = 8, titleTop = 8;
+  function arrangeTitle() {
+    const two = W / H < 1.2;
+    const sp = two ? 2.75 : 2.48;
+    letters.forEach(l => {
+      const row = two && l.i < 4 ? 1 : 0, col = two ? l.i % 4 : l.i, n = two ? 4 : 8;
+      l.x = (col - (n - 1) / 2) * sp + (two ? 0 : l.i > 3 ? 0.32 : -0.32);
+      l.h = (two ? 5.9 : 6.1) + row * 3.4 + [0.1, 0, 0.12, -0.02, 0.06, -0.08, 0.1, 0][l.i];
+      l.grp.position.x = l.x;
+      l.grp.position.z = LOGO_Z + (two ? (row ? -0.3 : 0.15) : (l.i % 2) * 0.08);   // untere Zeile verdeckt die Stäbe der oberen
+      l.stick.scale.y = l.h; l.stick.position.y = l.h / 2;
+    });
+    banner.y = two ? 3.65 : 3.85;
+    banner.s = two ? 1 : 1.25;
+    titleHalf = two ? 5.7 : 10.4;
+    titleTop = (two ? 9.3 : 6.1) + 1.7;
+  }
+
   /* ---------- Antwortfelder mit Schildern ---------- */
   const PAD_X = [-5.55, -1.85, 1.85, 5.55], PAD_Z = -1.3, PAD_TOP = 0.2, SIGN_Z = -3.1;
   const padGroup = new T.Group();
@@ -695,13 +1002,16 @@ const Stage = (() => {
     return o;
   })();
   const confetti = [];
+  const confettiGroup = new T.Group();
+  confettiGroup.visible = false;
+  scene.add(confettiGroup);
   (() => {
     const r = rnd(33), geo = new T.PlaneGeometry(.2, .12);
     const mats = [...TEAM, PAPER, RED].map(c => new T.MeshBasicMaterial({ color: c, side: T.DoubleSide }));
     for (let i = 0; i < (calm ? 0 : 110); i++) {
       const m = new T.Mesh(geo, mats[i % mats.length]);
       const c = { m, x: (r() - .5) * 17, z: -2 + r() * 5, y: r() * 11, v: 1.1 + r() * 1.6, s: 2 + r() * 5, ph: r() * 6 };
-      podium.add(m);
+      confettiGroup.add(m);
       confetti.push(c);
     }
   })();
@@ -879,7 +1189,15 @@ const Stage = (() => {
 
   function setPlayers(list) {
     const ids = new Set(list.map(p => p.id));
-    figs.forEach((f, id) => { if (!ids.has(id)) { scene.remove(f.g, f.shadow); f.label.remove(); f.tag.remove(); f.pops.forEach(x => x.el.remove()); figs.delete(id); } });
+    const drop = f => { scene.remove(f.g, f.shadow); f.label.remove(); f.tag.remove(); f.pops.forEach(x => x.el.remove()); if (figs.get(f.id) === f) figs.delete(f.id); };
+    figs.forEach((f, id) => {
+      if (ids.has(id)) { f.leaving = false; return; }
+      if (mode !== 'title' || calm) return drop(f);
+      if (f.leaving) return;
+      f.leaving = true;   // hüpft zur Seite hinaus und verschwindet dann
+      f.tag.hidden = true;
+      walkTo(f, f.pos.x < 0 ? -17 : 17, 0, f.pos.z).then(() => { if (f.leaving) drop(f); });
+    });
     list.forEach((p, i) => {
       let f = figs.get(p.id);
       if (!f) { f = makeFig(p, i); figs.set(p.id, f); }
@@ -910,6 +1228,7 @@ const Stage = (() => {
     question: { look: [0, 1.4, 0], elev: 25, pts: [[-7.5, 3.75, SIGN_Z], [7.5, 3.75, SIGN_Z], [-7.3, 0, -0.1], [7.3, 0, -0.1], [-5.4, -0.5, 2.6], [5.4, -0.5, 2.6]] },
     reveal: { look: [0, 1.4, -1], elev: 20, pts: [[-7.5, 3.8, SIGN_Z], [7.5, 3.8, SIGN_Z], [-7.4, -0.35, 0.1], [7.4, -0.35, 0.1]] },
     doors: { look: [0, 1.9, -0.6], elev: 17, pts: [[-7.3, 4.75, DOOR_Z], [7.3, 4.75, DOOR_Z], [-7.3, 0, -0.1], [7.3, 0, -0.1], [-5.4, -0.5, 2.6], [5.4, -0.5, 2.6]] },
+    title: { look: [0, 4.4, -1.5], elev: 9, pts: [] },
     lobby: { look: [0, 1.1, 0.6], elev: 9, pts: [[-4.8, -0.55, 0.6], [4.8, -0.55, 0.6], [-4.8, 3, 0.6], [4.8, 3, 0.6]] },
     climb: { look: [0, 2.4, 0], elev: 11, pts: [[-8.1, -0.45, 1.05], [8.4, -0.45, 1.05], [-8.1, 2.7, -0.2], [8.6, 6.4, -1.2]] },
     podium: { look: [0, 1.6, 0], elev: 8, pts: [[-6.1, -0.5, 0.9], [6.1, -0.5, 0.9], [0, 4.6, 0], [-4, 3.6, 0], [4, 3.6, 0]] }
@@ -929,6 +1248,10 @@ const Stage = (() => {
   }
   function aimCamera() {
     const s = SHOTS[shot];
+    if (shot === 'title') {
+      arrangeTitle();
+      s.pts = [[-titleHalf, titleTop + 1.9, LOGO_Z], [titleHalf, titleTop + 1.9, LOGO_Z], [-5.2, -1.0, 1.6], [5.2, -1.0, 1.6]];
+    }
     goal.look.set(...s.look); goal.elev = s.elev;
     // freier Bereich in Bildkoordinaten (-1 … 1)
     let fx0 = -1 + 2 * ins.left / W, fx1 = 1 - 2 * ins.right / W, fy0 = -1 + 2 * ins.bottom / H, fy1 = 1 - 2 * ins.top / H;
@@ -1006,19 +1329,36 @@ const Stage = (() => {
     else if (m === 'climb' && !STEPS) buildStairs(lastSummit);
     padGroup.visible = m === 'question';
     doorGroup.visible = m === 'doors';
+    world.visible = m === 'title';
+    studioParts.forEach(o => { o.visible = m !== 'title'; });   // Titel: Landschaft statt Studio
+    scene.background.copy(m === 'title' ? SKY : bgBase);
+    confettiGroup.visible = m === 'title' || m === 'podium';
+    confetti.forEach((c, i) => { c.m.visible = m !== 'title' || i % 3 === 0; });
+    if (m === 'title') {
+      if (opts.intro && !calm) { titleT0 = now(); snapUntil = now() + 0.2; }
+      else if (titleT0 < 0) titleT0 = now() - 60;
+    }
     stairs.visible = m === 'climb';
     podium.visible = m === 'podium';
     marquee.visible = m === 'question';
     aimCamera();
-    const list = [...figs.values()].sort((a, b) => a.order - b.order);
+    const list = [...figs.values()].filter(f => !f.leaving).sort((a, b) => a.order - b.order);
     const n = list.length;
     return Promise.all(list.map((f, i) => {
-      f.mood = m === 'lobby' ? 'wave' : 'idle';
+      f.mood = m === 'lobby' || m === 'title' ? 'wave' : 'idle';
       setLabel(f.id, { status: '' });
       let x = 0, y = 0, z = 0;
       if (f.gone) { f.gone = false; f.fresh = true; }   // war durch eine Tür gegangen: plumpst wieder herein
       if (m === 'question' || m === 'doors') { x = (i - (n - 1) / 2) * 2.7; z = 2.2; }
       else if (m === 'lobby') { x = (i - (n - 1) / 2) * 2.4; z = 0.6; }
+      else if (m === 'title') {
+        x = (i - (n - 1) / 2) * 2.7; z = 1.6;
+        if (f.fresh && !calm) {   // hüpft von der Seite herein statt von oben zu fallen
+          f.fresh = false;
+          f.pos.set(x < 0 || (x === 0 && i % 2 === 0) ? -17 : 17, 0, z);
+          return walkTo(f, x, 0, z, 1.5 + i * 0.12);
+        }
+      }
       else if (m === 'climb') { [x, y, z] = stairPos((opts.steps && opts.steps[f.id]) || 0, i, n); }
       else if (m === 'podium') {
         const r = opts.ranks ? opts.ranks.indexOf(f.id) : i;
@@ -1095,6 +1435,11 @@ const Stage = (() => {
   }
 
   function lock(id) { const f = figs.get(id); if (f) f.jumpT = now(); }
+  /* Titelbild: Logo macht einen Satz, alle Figuren springen nacheinander. */
+  function titleKick() {
+    kickT = now();
+    [...figs.values()].forEach((f, i) => setTimeout(() => { f.jumpT = now(); }, i * 110));
+  }
   function mood(id, m) { const f = figs.get(id); if (f) f.mood = m; }
 
   /* choices: [{ id, pad }]. Mehrere Figuren auf einem Feld stellen sich nebeneinander. */
@@ -1142,7 +1487,7 @@ const Stage = (() => {
 
   function updateFig(f, t, dt) {
     f.g.visible = !f.gone;
-    f.label.hidden = f.tag.hidden = f.gone;
+    f.label.hidden = f.gone; f.tag.hidden = f.gone || !!f.leaving;
     if (f.gone) { f.shadow.visible = false; return; }
     const wob = calm ? 0 : 1;
     let hop = 0, turn = 1, tilt = Math.sin(t * 1.7 + f.phase) * 0.035 * wob, look = f.mood, ground = f.pos.y;
@@ -1167,7 +1512,10 @@ const Stage = (() => {
     if (!f.walk && !(jk >= 0 && jk < 1)) {
       if (f.mood === 'cheer') { const b = Math.abs(Math.sin((t + f.phase) * 6.5)); hop += b * 0.42 * wob; tilt = Math.sin((t + f.phase) * 6.5) * 0.1 * wob; }
       else if (f.mood === 'sad') { sy = 0.93; sx = 1.04; tilt = -0.09; }
-      else if (f.mood === 'wave') { tilt = Math.sin(t * 5 + f.phase) * 0.06 * wob; }
+      else if (f.mood === 'wave') {
+        tilt = Math.sin(t * 5 + f.phase) * 0.06 * wob;
+        if (mode === 'title') { const bp = (beatNow + f.order) % 2; if (bp < 1) hop += Math.sin(bp * Math.PI) * 0.34 * wob; }
+      }
       else if (f.mood === 'think') { tilt = Math.sin(t * 1.9 + f.phase) * 0.08 * wob; }
     }
     if (hop > 0) { sy += hop * 0.14; sx -= hop * 0.07; }
@@ -1222,6 +1570,45 @@ const Stage = (() => {
       const edge = camera.position.x + v.x * (c.o.position.z - camera.position.z) / v.z;
       c.o.position.x = edge + c.s * 1.3;
     });
+    // Takt: von der Titelmusik, sonst im gleichen Tempo aus der Uhr
+    const music = window.KopfnussMusic;
+    beatNow = music && music.playing ? music.beat() : t * 2.2;
+    if (world.visible) {
+      const pulse = calm ? 0 : Math.pow(1 - (beatNow % 1), 2.5);   // 1 auf dem Schlag, klingt ab
+      sun.rays.rotation.z = calm ? 0 : t * 0.1;
+      sun.disc.scale.setScalar(1 + pulse * 0.04);
+      skyClouds.forEach(c => {
+        c.m.position.x = calm ? c.x : ((c.x + t * c.sp + 50) % 100 + 100) % 100 - 50;
+        c.m.position.y = c.y + (calm ? 0 : Math.sin(t * 0.6 + c.ph) * 0.35);
+      });
+      balloon.position.set(3.5 + (calm ? 0 : Math.sin(t * 0.21) * 3), 11.2 + (calm ? 0 : Math.sin(t * 0.5) * 0.6), -24);
+      balloon.rotation.z = calm ? 0 : Math.sin(t * 0.7) * 0.06;
+      tent.scale.set(1 + pulse * 0.02, 1 - pulse * 0.025, 1);
+      bushes.forEach((o, i) => { o.scale.y = 1 + pulse * 0.05 * (i ? 1 : 0.7); });
+      letters.forEach(l => {
+        // klappt wie im Pop-up-Buch aus dem Boden hoch und federt nach
+        const k = clamp((t - titleT0 - 0.7 - l.i * 0.14) / 0.75, 0, 1);
+        const spring = k === 1 ? 0 : Math.pow(1 - k, 2) * Math.cos(k * Math.PI * 3);
+        l.grp.rotation.x = -1.56 * spring;
+        l.grp.visible = t - titleT0 > 0.65 + l.i * 0.14;
+        // Welle durch das Logo, im Takt
+        let y = l.h + (calm ? 0 : Math.max(0, Math.sin((beatNow - l.i * 0.25) * Math.PI)) * 0.2 * k);
+        const kk = (t - kickT - l.i * 0.05) / 0.55;
+        if (kk > 0 && kk < 1) y += Math.sin(kk * Math.PI) * 1.1;
+        l.m.position.y = y;
+        l.m.rotation.z = l.rot + (calm ? 0 : Math.sin(t * 1.5 + l.i * 1.3) * 0.045);
+      });
+      nutStars.forEach((st, j) => {
+        const a = (calm ? 0 : t * 2.6) + j * 2.094;
+        st.position.set(Math.cos(a) * 1.3, letters[1].m.position.y + 1.8 + Math.sin(a * 2) * 0.06, Math.sin(a) * 0.25 + 0.06);
+        st.rotation.z = a * 0.7;
+      });
+      const bk = clamp((t - titleT0 - 2.3) / 0.45, 0, 1);
+      banner.m.visible = bk > 0;
+      banner.m.position.y = banner.y;
+      banner.m.scale.set((bk + Math.sin(bk * Math.PI) * 0.18) * banner.s, (0.6 + 0.4 * bk) * banner.s * (1 + pulse * 0.03), 1);
+      banner.m.rotation.z = -0.02 + (calm ? 0 : Math.sin(t * 1.2) * 0.012);
+    }
     swayers.forEach(s => {
       const w = calm ? 0 : Math.sin(t * s.sp + s.ph);
       if (s.rz) s.o.rotation.z = (s.base || 0) + w * s.rz;
@@ -1252,8 +1639,8 @@ const Stage = (() => {
       clouds.forEach(c => { c.o.position.x = c.x + (calm ? 0 : Math.sin(t * 0.12 + c.ph) * 1.6); });
       if (flag) flag.userData.cloth.scale.x = calm ? 1 : 0.9 + Math.sin(t * 4) * 0.1;
     }
-    if (podium.visible) {
-      burst.rotation.z = calm ? 0 : t * 0.25;
+    if (podium.visible) burst.rotation.z = calm ? 0 : t * 0.25;
+    if (confettiGroup.visible) {
       confetti.forEach(c => {
         c.y -= c.v * dt;
         if (c.y < 0) { c.y = 9 + Math.random() * 3; c.x = (Math.random() - .5) * 17; }
@@ -1276,12 +1663,12 @@ const Stage = (() => {
   // Sobald die Comic-Schrift geladen ist, alles Beschriftete neu zeichnen
   if (document.fonts && document.fonts.load) {
     document.fonts.load('40px Bangers').then(() => {
-      refreshMarquee(); drawPodium();
+      refreshMarquee(); drawPodium(); redrawLogo();
       pads.forEach(drawSign);
       doors.forEach(d => { drawDoorFrame(d); drawDoorLeaf(d); });
       if (STEPS) { const s = STEPS - 1; STEPS = 0; buildStairs(s); }
     }).catch(noop);
   }
 
-  return { ok: true, mount, setPlayers, setInsets, setDoors, pointDoor, dim, voteWalk, openDoor, enterDoor, layout, setLabel, setAnswers, lock, walkToPads, reveal, pop, climb, mood };
+  return { ok: true, mount, setPlayers, setInsets, setDoors, pointDoor, dim, titleKick, voteWalk, openDoor, enterDoor, layout, setLabel, setAnswers, lock, walkToPads, reveal, pop, climb, mood };
 })();

@@ -307,16 +307,21 @@ function waitContinue(btn, phoneView) {
 const ROOM_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const Remote = {
   conn: null, room: null, clients: [], views: {}, seq: 0, open: false, status: 'idle',
-  inputHandler: null, onChange: null, hb: null, t: null,
+  inputHandler: null, onChange: null, onRoom: null, hb: null, t: null,
   start() {
     this.stop();
     this.room = Array.from({ length: 4 }, () => pick(ROOM_LETTERS.split(''))).join('');
     this.clients = []; this.views = {}; this.open = true; this.status = 'connecting';
     this.conn = Net.connect(this.room, m => this.recv(m), s => {
+      if (s === 'taken') {   // Raumcode schon vergeben: neuen würfeln und die Lobby neu zeichnen
+        this.start();
+        if (this.onRoom) this.onRoom();
+        return;
+      }
       this.status = s;
       if (s === 'open') this.flush();
       if (this.onChange) this.onChange();
-    });
+    }, 'host');
     this.hb = setInterval(() => this.flush(), 2000);
   },
   stop() {
@@ -374,7 +379,7 @@ const Remote = {
 
 function controllerUrl() {
   const u = new URL('controller.html', location.href);
-  u.search = '?raum=' + Remote.room + (Net.forceLocal ? '&lokal' : '');
+  u.search = '?raum=' + Remote.room + (Net.mode === 'lokal' ? '&lokal' : Net.mode === 'supabase' ? '&supabase' : '');
   u.hash = '';
   return u.href;
 }
@@ -413,6 +418,7 @@ let S = null;
 let lastSetup = null;
 
 function newGame(setup) {
+  KopfnussMusic.stop(1.4);   // Titelmusik blendet aus, sobald das Spiel beginnt
   lastSetup = setup;
   const remote = setup.mode === 'remote';
   S = {
@@ -1122,8 +1128,15 @@ function confetti(main) {
   })(t0);
 }
 
-/* ---------- Start: Spielart und Spieler einrichten ---------- */
+/* ---------- Start: Titelbild, dann Spielart und Spieler ---------- */
+/*
+  Erst das Titelbild: Vorhang auf, das Logo fällt Buchstabe für Buchstabe herein, die Figuren
+  hüpfen auf die Bühne, der Start-Knopf blinkt. Nach dem Start fährt das Menü herein. Die Figuren
+  auf der Bühne zeigen live, wer mitspielt: Anzahl und Namen ändern sich mit den Eingaben.
+*/
 let setupMode = 'local';
+let titleSeen = false;
+let titleTimer = 0;
 
 function setupScreen() {
   Remote.stop();
@@ -1133,32 +1146,51 @@ function setupScreen() {
   while (names.length < 4) names.push(DEFAULT_NAMES[names.length]);
 
   show(`
-    <div class="setup">
-      <div class="logo">
-        <h1 class="wordmark">Kopf<span>nuss</span></h1>
-        <p class="tagline">Das Quiz, bei dem du deine Freunde ausbremst.</p>
+    <div class="title">
+      ${Stage.ok ? '<div class="stage-full" id="stage"></div>' : ''}
+      <div class="hud hud-top title-top" data-inset="top">
+        ${Stage.ok ? '' : '<div class="logo"><h1 class="wordmark">Kopf<span>nuss</span></h1><p class="tagline">Das Quiz, bei dem du deine Freunde ausbremst.</p></div>'}
+        <div class="corner-btns">
+          <button class="btn btn-ghost btn-small" id="open-rules">So geht’s</button>
+          <button class="btn btn-ghost btn-small" id="open-settings">Ton &amp; Stimme</button>
+        </div>
       </div>
-      <div class="setup-grid">
-        <section class="box">
-          <h2 class="box-title">Wie wollt ihr spielen?</h2>
-          <div class="modes" role="group" aria-label="Spielart">
-            <button class="mode-btn" data-mode="local" aria-pressed="${setupMode === 'local'}">${icon('bildschirm')}<span><b>Ein Bildschirm</b><small>Antworten per Tippen oder Tastatur</small></span></button>
-            <button class="mode-btn" data-mode="remote" aria-pressed="${setupMode === 'remote'}">${icon('handy')}<span><b>Handys als Controller</b><small>Jede Person spielt am eigenen Handy</small></span></button>
-          </div>
-          <div id="mode-local">
-            <div class="count" role="group" aria-label="Anzahl der Spieler">
-              ${[1, 2, 3, 4].map(c => `<button class="count-btn" data-c="${c}" aria-pressed="${c === count}">${c}</button>`).join('')}
+      <div class="hud hud-bottom title-foot" data-inset="bottom">
+        <div class="press" id="press" ${titleSeen ? 'hidden' : ''}>
+          <button class="btn btn-go btn-start" id="press-start">Start</button>
+          <p class="press-hint">Tippen oder Enter drücken</p>
+        </div>
+        <section class="box menu" id="menu" ${titleSeen ? '' : 'hidden'}>
+          <div class="menu-col">
+            <h2 class="box-title">Wie wollt ihr spielen?</h2>
+            <div class="modes" role="group" aria-label="Spielart">
+              <button class="mode-btn" data-mode="local" aria-pressed="${setupMode === 'local'}">${icon('bildschirm')}<span><b>Ein Bildschirm</b><small>Tippen oder Tastatur</small></span></button>
+              <button class="mode-btn" data-mode="remote" aria-pressed="${setupMode === 'remote'}">${icon('handy')}<span><b>Mit Handys</b><small>Jede Person am eigenen Handy</small></span></button>
             </div>
-            <div class="players"></div>
           </div>
-          <div id="mode-remote">
-            <p class="mode-note">Der große Bildschirm zeigt einen QR-Code. Bis zu vier Leute scannen ihn mit der Handy-Kamera und geben ihren Namen ein. Antworten und Sabotagen wählt jede Person geheim auf dem eigenen Handy.</p>
-            ${window.KOPFNUSS_VORSCHAU ? '<p class="mode-warn">In dieser Vorschau gibt es keinen Handy-Modus. Er läuft auf deiner Website unter /herzfrequenz/quiz/.</p>'
-              : Net.available() ? '' : '<p class="mode-warn">Für den Handy-Modus fehlt die Supabase-Verbindung in config.js.</p>'}
+          <div class="menu-col menu-players">
+            <div id="mode-local">
+              <div class="menu-row">
+                <h2 class="box-title">Wer spielt mit?</h2>
+                <div class="count" role="group" aria-label="Anzahl der Spieler">
+                  ${[1, 2, 3, 4].map(c => `<button class="count-btn" data-c="${c}" aria-pressed="${c === count}">${c}</button>`).join('')}
+                </div>
+              </div>
+              <div class="players"></div>
+            </div>
+            <div id="mode-remote">
+              <p class="mode-note">Der große Bildschirm zeigt gleich einen QR-Code. Bis zu vier Leute scannen ihn mit der Handy-Kamera, geben ihren Namen ein und spielen geheim am eigenen Handy.</p>
+              ${window.KOPFNUSS_VORSCHAU ? '<p class="mode-warn">In dieser Vorschau gibt es keinen Handy-Modus. Er läuft auf deiner Website unter /herzfrequenz/quiz/.</p>'
+                : Net.available() ? '' : '<p class="mode-warn">' + (Net.mode === 'supabase' ? 'Für den Handy-Modus fehlt die Supabase-Verbindung in config.js.' : 'Dieser Browser kann keine direkte Verbindung zu Handys aufbauen. Probier einen aktuellen Chrome, Edge, Firefox oder Safari.') + '</p>'}
+            </div>
           </div>
-          <button class="btn btn-go btn-wide" id="start">Spiel starten</button>
+          <div class="menu-col menu-go">
+            <button class="btn btn-go btn-big" id="start">Spiel starten</button>
+          </div>
         </section>
-        <section class="box box-rules">
+      </div>
+      <div class="sheet-wrap" id="rules" hidden>
+        <section class="box sheet box-rules" role="dialog" aria-label="So geht’s">
           <h2 class="box-title">So geht’s</h2>
           <ol class="rules">
             <li><b>${SETTINGS.rounds} Runden mit je ${SETTINGS.perRound} Fragen.</b> Jede Frage wird vorgelesen, dann läuft die Zeit. Schnell und richtig gibt bis zu 1.000 Punkte, in der letzten Runde das Doppelte.</li>
@@ -1166,8 +1198,15 @@ function setupScreen() {
             <li><b>Abstimmung vor jeder Frage.</b> Vier Türen, vier Kategorien. Die Mehrheit entscheidet. Bei Gleichstand springt der Zufallsstern zwischen den Türen hin und her. Dann laufen alle durch die Tür.</li>
             <li><b>Finale Gipfelsturm.</b> Wer vorne liegt, startet höher. Wer zuerst oben ist, gewinnt.</li>
           </ol>
+          <button class="btn btn-go" data-close>Alles klar</button>
+        </section>
+      </div>
+      <div class="sheet-wrap" id="settings" hidden>
+        <section class="box sheet" role="dialog" aria-label="Ton und Stimme">
+          <h2 class="box-title">Ton &amp; Stimme</h2>
           <div class="toggles">
             <label class="toggle"><input type="checkbox" id="sound" ${Sound.on ? 'checked' : ''}> Soundeffekte</label>
+            <label class="toggle"><input type="checkbox" id="music" ${KopfnussMusic.enabled ? 'checked' : ''}> Titelmusik</label>
             <label class="toggle"><input type="checkbox" id="voice" ${Voice.on ? 'checked' : ''}> Fragen vorlesen</label>
             <div class="voice-row" id="voice-row">
               <label for="voice-style" class="sr-only">Art der Stimme</label>
@@ -1181,9 +1220,33 @@ function setupScreen() {
               <button class="btn btn-ghost btn-small" id="voice-test">Probehören</button>
             </div>
           </div>
+          <button class="btn btn-go" data-close>Fertig</button>
         </section>
       </div>
-    </div>`, 'is-setup');
+    </div>`, 'is-setup' + FULL);
+
+  /* Figuren auf der Bühne: auf dem Titelbild alle vier, im Menü genau die, die mitspielen */
+  const figures = () => names.slice(0, !titleSeen || setupMode === 'remote' ? 4 : count)
+    .map((nm, i) => ({ id: 'p' + i, name: (nm || '').trim() || DEFAULT_NAMES[i], color: PLAYER_COLORS[i] }));
+  const syncStage = intro => {
+    if (!Stage.ok) return;
+    Stage.setPlayers(figures());
+    Stage.layout('title', { intro });
+  };
+  mountStage();
+  syncStage(!titleSeen);
+  // Titelmusik: Browser erlauben Ton erst nach dem ersten Tippen oder Tastendruck
+  if (!KopfnussMusic.start()) {
+    const wake = () => { if (app.classList.contains('is-setup') || app.classList.contains('is-lobby')) KopfnussMusic.start(); };
+    document.addEventListener('pointerdown', wake, { once: true });
+    document.addEventListener('keydown', wake, { once: true });
+  }
+  // Ab und zu macht eine Figur einen Luftsprung
+  clearInterval(titleTimer);
+  titleTimer = setInterval(() => {
+    if (!app.classList.contains('is-setup')) return clearInterval(titleTimer);
+    if (document.visibilityState === 'visible') Stage.lock(pick(figures()).id);
+  }, 2400);
 
   const renderPlayers = () => {
     $('.players').innerHTML = names.slice(0, count).map((nm, i) => `
@@ -1193,7 +1256,7 @@ function setupScreen() {
         <input id="name-${i}" maxlength="14" value="${esc(nm)}" autocomplete="off">
         <span class="keys">${KEYSETS[i].map(k => `<kbd>${keyLabel(k)}</kbd>`).join('')}</span>
       </div>`).join('');
-    $$('.players input').forEach((inp, i) => inp.addEventListener('input', () => { names[i] = inp.value; }));
+    $$('.players input').forEach((inp, i) => inp.addEventListener('input', () => { names[i] = inp.value; if (Stage.ok) Stage.setPlayers(figures()); }));
   };
   const renderMode = () => {
     $('#mode-local').hidden = setupMode !== 'local';
@@ -1212,13 +1275,42 @@ function setupScreen() {
   renderPlayers(); renderMode(); renderVoices();
   Voice.onVoices = renderVoices;
 
-  $$('.mode-btn').forEach(b => b.addEventListener('click', () => { setupMode = b.dataset.mode; Sound.click(); renderMode(); }));
+  // Titelbild: Start per Knopf, Tipp auf die Bühne, Enter oder Leertaste
+  const begin = () => {
+    if (titleSeen) return;
+    titleSeen = true;
+    Sound.init(); Voice.prime(); Sound.fanfare();
+    KopfnussMusic.start();
+    Stage.titleKick();
+    Voice.say('Willkommen bei Kopfnuss!', { emote: 'tada' });
+    $('#press').hidden = true;
+    $('#menu').hidden = false;
+    keyHandler = null;
+    syncStage(false);
+  };
+  $('#press-start').addEventListener('click', begin);
+  const stageEl = $('#stage');
+  if (stageEl) stageEl.addEventListener('click', begin);
+  if (!titleSeen) keyHandler = k => { if (k === 'enter' || k === 'space') { begin(); return true; } };
+
+  // Zettel "So geht’s" und "Ton & Stimme"
+  const openSheet = id => { Sound.init(); Sound.click(); $('#' + id).hidden = false; const b = $('#' + id + ' [data-close]'); if (b) b.focus(); };
+  $('#open-rules').addEventListener('click', () => openSheet('rules'));
+  $('#open-settings').addEventListener('click', () => openSheet('settings'));
+  $$('.sheet-wrap').forEach(w => {
+    w.addEventListener('click', e => { if (e.target === w || e.target.closest('[data-close]')) { Sound.click(); w.hidden = true; } });
+    w.addEventListener('keydown', e => { if (e.key === 'Escape') w.hidden = true; });
+  });
+
+  $$('.mode-btn').forEach(b => b.addEventListener('click', () => { setupMode = b.dataset.mode; Sound.click(); renderMode(); syncStage(false); }));
   $$('.count-btn').forEach(b => b.addEventListener('click', () => {
     count = +b.dataset.c; Sound.click();
     $$('.count-btn').forEach(x => x.setAttribute('aria-pressed', x === b));
     renderPlayers();
+    syncStage(false);
   }));
   $('#sound').addEventListener('change', e => { Sound.on = e.target.checked; Sound.init(); setPref('kopfnuss-sound', Sound.on); Sound.click(); });
+  $('#music').addEventListener('change', e => { KopfnussMusic.enabled = e.target.checked; if (e.target.checked) KopfnussMusic.start(); });
   $('#voice').addEventListener('change', e => {
     Voice.on = e.target.checked; setPref('kopfnuss-stimme', Voice.on); renderVoices();
     if (Voice.on) Voice.say('Hallo, hallo! Ich lese euch die Fragen vor!', { emote: 'yay' }); else Voice.stop();
@@ -1230,6 +1322,7 @@ function setupScreen() {
   $('#start').addEventListener('click', () => {
     Sound.init(); Sound.click();
     Voice.prime();
+    clearInterval(titleTimer);
     if (setupMode === 'remote') { lobbyScreen(); return; }
     const players = names.slice(0, count).map((nm, i) => ({ name: (nm || '').trim() || DEFAULT_NAMES[i] }));
     newGame({ mode: 'local', players });
@@ -1271,9 +1364,9 @@ function lobbyScreen() {
 
   const statusText = {
     connecting: 'Verbinde mit dem Server …',
-    open: Net.forceLocal ? 'Testmodus: Öffne den Link links in einem zweiten Tab dieses Browsers.' : 'Verbunden. Scannt den Code mit der Handy-Kamera.',
+    open: Net.forceLocal ? 'Testmodus: Öffne den Link links in einem zweiten Tab dieses Browsers.' : Net.mode === 'direkt' ? 'Bereit! Scannt den Code mit der Handy-Kamera. Am besten sind alle im selben WLAN.' : 'Verbunden. Scannt den Code mit der Handy-Kamera.',
     reconnecting: 'Verbindung unterbrochen. Verbinde neu …',
-    error: 'Keine Verbindung zum Server. Prüfe im Supabase-Dashboard, ob dein Projekt aktiv ist. In einer Vorschau ohne Internetzugang funktioniert der Handy-Modus nicht.'
+    error: Net.mode === 'direkt' ? 'Der Vermittlungsdienst ist gerade nicht erreichbar. Prüfe die Internetverbindung, ich versuche es weiter.' : 'Keine Verbindung zum Server. Prüfe im Supabase-Dashboard, ob dein Projekt aktiv ist. In einer Vorschau ohne Internetzugang funktioniert der Handy-Modus nicht.'
   };
   const render = () => {
     const net = $('#net'); if (!net) return;
@@ -1291,6 +1384,7 @@ function lobbyScreen() {
     $$('#list .remove').forEach(b => b.addEventListener('click', () => Remote.remove(b.dataset.cid)));
     $('#start').disabled = !Remote.clients.length;
   };
+  Remote.onRoom = () => lobbyScreen();   // Raumcode war vergeben: Lobby mit neuem Code zeigen
   Remote.onChange = () => {
     render();
     if (Stage.ok) {
@@ -1303,10 +1397,10 @@ function lobbyScreen() {
 
   $('#start').addEventListener('click', () => {
     Sound.click();
-    Remote.onChange = null;
+    Remote.onChange = null; Remote.onRoom = null;
     newGame({ mode: 'remote', players: Remote.clients.map(c => ({ name: c.name, cid: c.cid, color: c.color })) });
   });
-  $('#back').addEventListener('click', () => { Sound.click(); Remote.onChange = null; setupScreen(); });
+  $('#back').addEventListener('click', () => { Sound.click(); Remote.onChange = null; Remote.onRoom = null; setupScreen(); });
 }
 
 if (!CATEGORIES.length) {

@@ -81,8 +81,9 @@ function start() {
     netStatus = s;
     const dot = $('.ph-dot', phone); if (dot) dot.className = 'ph-dot is-' + s;
     if (s === 'open') sendJoin();
-    if (s === 'error' && !me) info('Keine Verbindung', 'Das Handy erreicht den Server nicht. Prüfe das Internet und versuche es nochmal.');
-  });
+    if (s === 'notfound' && !me) info('Raum nicht gefunden', `Auf dem großen Bildschirm ist gerade kein Raum ${room} offen. Prüfe den Code; ich versuche es weiter.`);
+    if (s === 'error' && !me) info('Keine Verbindung', Net.mode === 'direkt' ? 'Das Handy erreicht den Vermittlungsdienst nicht. Prüfe das Internet; ich versuche es weiter.' : 'Das Handy erreicht den Server nicht. Prüfe das Internet und versuche es nochmal.');
+  }, 'client');
   if (navigator.wakeLock && !wakeLock) navigator.wakeLock.request('screen').then(l => { wakeLock = l; l.addEventListener('release', () => { wakeLock = null; }); }).catch(() => {});
 }
 
@@ -98,6 +99,7 @@ setInterval(() => {
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && conn) {
+    if (conn.wake) conn.wake();
     send({ t: 'hello' });
     if (navigator.wakeLock && !wakeLock) navigator.wakeLock.request('screen').then(l => { wakeLock = l; }).catch(() => {});
   }
