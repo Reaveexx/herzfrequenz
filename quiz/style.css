@@ -911,3 +911,4 @@ kbd {
 .vote-chips { display: inline-flex; gap: 4px; margin-left: 6px; vertical-align: middle; }
 .vote-chips i { width: 16px; height: 16px; border-radius: 50%; background: var(--pc); border: 2.5px solid var(--ink); }
 .tv-ans b { font-family: var(--display, inherit); margin-right: .3em; }
+.tv-ans.hot { background-color: var(--zing); transform: scale(1.04) rotate(-1deg); }

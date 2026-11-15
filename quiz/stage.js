@@ -24,7 +24,7 @@ const Stage = (() => {
   const T = window.THREE;
   const noop = () => {};
   const done = () => Promise.resolve();
-  const fallback = { ok: false, mount: noop, setPlayers: noop, setInsets: noop, setDoors: noop, voteWalk: done, openDoor: done, enterDoor: done, layout: done, setLabel: noop, setAnswers: noop, lock: noop, walkToPads: done, reveal: noop, pop: noop, climb: done, mood: noop };
+  const fallback = { ok: false, mount: noop, setPlayers: noop, setInsets: noop, setDoors: noop, pointDoor: noop, voteWalk: done, openDoor: done, enterDoor: done, layout: done, setLabel: noop, setAnswers: noop, lock: noop, walkToPads: done, reveal: noop, pop: noop, climb: done, mood: noop };
   if (!T) return fallback;
 
   let renderer;
@@ -518,6 +518,34 @@ const Stage = (() => {
     return d;
   });
 
+  // Zufallszeiger: ein gelber Zackenstern hinter der Tür, auf die gerade gezeigt wird
+  const pointer = (() => {
+    const [c, g] = mk(640, 640);
+    const star = (n, r0, r1, seed) => { const q = rnd(seed); g.beginPath(); for (let i = 0; i < n * 2; i++) { const rad = (i % 2 ? r0 : r1) + (q() - .5) * 14, a = i / (n * 2) * Math.PI * 2; g.lineTo(320 + Math.cos(a) * rad, 320 + Math.sin(a) * rad); } g.closePath(); };
+    star(16, 215, 300, 5); g.fillStyle = SUN; g.fill();
+    g.save(); g.clip(); halftone(g, 0, 0, 640, 640, 18, '#f59f2a', (x, y) => Math.hypot(x - 320, y - 320) / 260 - .5); g.restore();
+    star(16, 215, 300, 5); ink(g, 10);
+    // Geometrie nach oben geschoben, damit der Stern beim Sortieren wie die Türen am Boden steht
+    const map = tex(sticker(c, 7));
+    map.center.set(0.5, 0.5);   // der Stern dreht sich über seine Textur
+    const o = new T.Mesh(new T.PlaneGeometry(6.6, 6.6).translate(0, 2.55, 0), cutMat(map));
+    o.userData.map = map;
+    o.position.set(0, 0, DOOR_Z - 0.12);
+    o.visible = false;
+    doorGroup.add(o);
+    return o;
+  })();
+  let pointerT = -9;
+  /* Zeigt auf eine Tür (Index) oder blendet den Zeiger aus (null). */
+  function pointDoor(door) {
+    const d = door === null ? null : doors[door];
+    pointer.visible = !!d;
+    if (!d) return;
+    pointer.position.x = d.x;
+    pointerT = now();
+    d.bounce = now();
+  }
+
   /* ---------- Treppe fürs Finale ---------- */
   // Die Treppe passt sich an die Gipfelhöhe aus SETTINGS.summit an
   let STEPS = 0, stepW = 1.4, rise = 0.32, lastSummit = 10;
@@ -1000,6 +1028,7 @@ const Stage = (() => {
 
   /* names: bis zu vier Kategorien. Überzählige Türen verschwinden. */
   function setDoors(names) {
+    pointer.visible = false;
     doors.forEach((d, i) => {
       d.grp.visible = i < names.length;
       d.text = names[i] || ''; d.state = ''; d.open = 0; d.openGoal = 0; d.bounce = now() + i * 0.08;
@@ -1016,6 +1045,7 @@ const Stage = (() => {
   }
   /* Gewinner-Tür leuchtet und schwingt auf, die anderen werden grau. */
   function openDoor(door) {
+    pointer.visible = false;
     doors.forEach((d, i) => {
       d.state = i === door ? 'won' : 'lost';
       if (i === door) { d.openGoal = 1; d.bounce = now(); }
@@ -1189,6 +1219,11 @@ const Stage = (() => {
       const pulse = b >= 0 && b < 1 && !calm ? Math.sin(b * Math.PI) : 0;
       d.frame.scale.setScalar(1 + pulse * 0.05);
     });
+    if (pointer.visible) {
+      const k = clamp((t - pointerT) / 0.18, 0, 1);
+      pointer.scale.setScalar(calm ? 1 : 0.8 + 0.2 * k + Math.sin(k * Math.PI) * 0.1);
+      pointer.userData.map.rotation = calm ? 0 : t * 0.5;
+    }
     if (stairs.visible) {
       clouds.forEach(c => { c.o.position.x = c.x + (calm ? 0 : Math.sin(t * 0.12 + c.ph) * 1.6); });
       if (flag) flag.userData.cloth.scale.x = calm ? 1 : 0.9 + Math.sin(t * 4) * 0.1;
@@ -1217,5 +1252,5 @@ const Stage = (() => {
     }).catch(noop);
   }
 
-  return { ok: true, mount, setPlayers, setInsets, setDoors, voteWalk, openDoor, enterDoor, layout, setLabel, setAnswers, lock, walkToPads, reveal, pop, climb, mood };
+  return { ok: true, mount, setPlayers, setInsets, setDoors, pointDoor, voteWalk, openDoor, enterDoor, layout, setLabel, setAnswers, lock, walkToPads, reveal, pop, climb, mood };
 })();

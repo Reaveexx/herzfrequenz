@@ -205,7 +205,9 @@ const LINES = {
   vote: ['Abstimmung! Durch welche Tür soll es gehen?', 'Vier Türen, eine Wahl! Stimmt ab!', 'Hopp, hopp! Wohin geht die Reise?', 'Tür eins, zwei, drei oder vier? Ihr entscheidet!'],
   voteSolo: ['Vier Türen! Welche darf’s sein?', 'Hopp, hopp! Such dir eine Tür aus!'],
   voteWon: ['{cat}! Alle Mann durch die Tür!', 'Die Mehrheit sagt: {cat}! Los geht’s!', 'Tür auf für: {cat}!'],
-  voteTie: ['Gleichstand! Das Los entscheidet: {cat}!', 'Unentschieden! Der Zufall sagt: {cat}!'],
+  voteSpin: ['Gleichstand! Der Zufall entscheidet!', 'Unentschieden! Dreh dich, Glücksstern!', 'Oh-oh, keine Mehrheit! Der Zufall muss ran!'],
+  voteNone: ['Keiner stimmt ab? Dann entscheidet der Zufall!', 'Na gut, dann würfle ich eben!'],
+  voteTie: ['Der Zufall sagt: {cat}!', 'Und es wird: {cat}!', 'Das Los fällt auf: {cat}!'],
   trap: ['{name}, such dir eine fiese Falle aus! Hihihi!', 'Psst, {name}! Wen ärgern wir heute?', '{name}, jetzt wird’s gemein! Wähle eine Falle!'],
   reveal: ['Und richtig ist: {answer}!', 'Die Antwort lautet: {answer}!', 'Tadaa! Es ist: {answer}!']
 };
@@ -628,10 +630,31 @@ async function categoryPhase(round, q) {
   Remote.setAll(() => ({ k: 'wait', title: cat, text: 'Gleich kommt die Frage auf dem Fernseher.' }));
   await wait(Stage.ok ? 900 : 300);   // die letzten Figuren kommen noch an
 
-  $('.question').textContent = tied.length > 1 && n > 1 ? `Gleichstand! Das Los sagt: ${cat}` : cat;
+  // Keine klare Mehrheit: Der Zufallszeiger springt zwischen den Türen mit den meisten Stimmen
+  // hin und her, wird langsamer und bleibt auf einer stehen. Ohne Stimmen sind alle Türen dabei.
+  const lottery = tied.length > 1;
+  if (lottery) {
+    $('.question').textContent = most > 0 ? 'Gleichstand! Der Zufall entscheidet …' : 'Keine Stimme! Der Zufall entscheidet …';
+    Voice.say(line(most > 0 ? 'voteSpin' : 'voteNone'), { emote: 'hm' });
+    await wait(Voice.on ? 1300 : 400);
+    const cards = $$('.tv-ans');
+    const rounds = tied.length <= 2 ? 5 : 3;
+    const total = rounds * tied.length + tied.indexOf(winner);   // der letzte Sprung landet auf dem Gewinner
+    let delay = 95;
+    for (let step = 0; step <= total; step++) {
+      const door = tied[step % tied.length];
+      Stage.pointDoor(door);
+      cards.forEach(el => el.classList.toggle('hot', +el.dataset.a === door));
+      if (step < total) { Sound.hop(step); await wait(delay); delay = Math.min(560, delay * (step >= total - 6 ? 1.3 : 1.05)); }
+    }
+    Sound.landed();
+    await wait(650);
+    cards.forEach(el => el.classList.remove('hot'));
+  } else Sound.good();
+
+  $('.question').textContent = cat;
   $$('.tv-ans').forEach(el => el.classList.add(+el.dataset.a === winner ? 'right' : 'dim'));
-  Sound.good();
-  Voice.say(tied.length > 1 && most > 0 && n > 1 ? line('voteTie', { cat }) : line('voteWon', { cat }), { emote: 'yay' });
+  Voice.say(line(lottery ? 'voteTie' : 'voteWon', { cat }), { emote: 'yay' });
   await Stage.openDoor(winner);
   await Stage.enterDoor(winner);
   await wait(Stage.ok ? 350 : 1400);
@@ -1133,7 +1156,7 @@ function setupScreen() {
           <ol class="rules">
             <li><b>${SETTINGS.rounds} Runden mit je ${SETTINGS.perRound} Fragen.</b> Jede Frage wird vorgelesen, dann läuft die Zeit. Schnell und richtig gibt bis zu 1.000 Punkte, in der letzten Runde das Doppelte.</li>
             <li><b>Sabotage vor jeder Runde.</b> Schick anderen Frost, Nebel, Kreisel, Kleckse, Zeitdieb oder Spiegel. Oder halte ein Schild hoch.</li>
-            <li><b>Abstimmung vor jeder Frage.</b> Vier Türen, vier Kategorien. Die Mehrheit entscheidet, bei Gleichstand das Los. Dann laufen alle durch die Tür.</li>
+            <li><b>Abstimmung vor jeder Frage.</b> Vier Türen, vier Kategorien. Die Mehrheit entscheidet. Bei Gleichstand springt der Zufallsstern zwischen den Türen hin und her. Dann laufen alle durch die Tür.</li>
             <li><b>Finale Gipfelsturm.</b> Wer vorne liegt, startet höher. Wer zuerst oben ist, gewinnt.</li>
           </ol>
           <div class="toggles">
