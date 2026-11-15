@@ -413,6 +413,7 @@ let S = null;
 let lastSetup = null;
 
 function newGame(setup) {
+  KopfnussMusic.stop(1.4);   // Titelmusik blendet aus, sobald das Spiel beginnt
   lastSetup = setup;
   const remote = setup.mode === 'remote';
   S = {
@@ -1200,6 +1201,7 @@ function setupScreen() {
           <h2 class="box-title">Ton &amp; Stimme</h2>
           <div class="toggles">
             <label class="toggle"><input type="checkbox" id="sound" ${Sound.on ? 'checked' : ''}> Soundeffekte</label>
+            <label class="toggle"><input type="checkbox" id="music" ${KopfnussMusic.enabled ? 'checked' : ''}> Titelmusik</label>
             <label class="toggle"><input type="checkbox" id="voice" ${Voice.on ? 'checked' : ''}> Fragen vorlesen</label>
             <div class="voice-row" id="voice-row">
               <label for="voice-style" class="sr-only">Art der Stimme</label>
@@ -1228,6 +1230,12 @@ function setupScreen() {
   };
   mountStage();
   syncStage(!titleSeen);
+  // Titelmusik: Browser erlauben Ton erst nach dem ersten Tippen oder Tastendruck
+  if (!KopfnussMusic.start()) {
+    const wake = () => { if (app.classList.contains('is-setup') || app.classList.contains('is-lobby')) KopfnussMusic.start(); };
+    document.addEventListener('pointerdown', wake, { once: true });
+    document.addEventListener('keydown', wake, { once: true });
+  }
   // Ab und zu macht eine Figur einen Luftsprung
   clearInterval(titleTimer);
   titleTimer = setInterval(() => {
@@ -1267,6 +1275,8 @@ function setupScreen() {
     if (titleSeen) return;
     titleSeen = true;
     Sound.init(); Voice.prime(); Sound.fanfare();
+    KopfnussMusic.start();
+    Stage.titleKick();
     Voice.say('Willkommen bei Kopfnuss!', { emote: 'tada' });
     $('#press').hidden = true;
     $('#menu').hidden = false;
@@ -1295,6 +1305,7 @@ function setupScreen() {
     syncStage(false);
   }));
   $('#sound').addEventListener('change', e => { Sound.on = e.target.checked; Sound.init(); setPref('kopfnuss-sound', Sound.on); Sound.click(); });
+  $('#music').addEventListener('change', e => { KopfnussMusic.enabled = e.target.checked; if (e.target.checked) KopfnussMusic.start(); });
   $('#voice').addEventListener('change', e => {
     Voice.on = e.target.checked; setPref('kopfnuss-stimme', Voice.on); renderVoices();
     if (Voice.on) Voice.say('Hallo, hallo! Ich lese euch die Fragen vor!', { emote: 'yay' }); else Voice.stop();
