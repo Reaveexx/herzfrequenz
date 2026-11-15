@@ -212,7 +212,7 @@ function render(v) {
     const t0 = performance.now();
     const tick = now => {
       const el = now - t0;
-      fill.style.transform = `scaleX(${Math.max(0, 1 - el / v.limit)})`;
+      fill.parentNode.style.setProperty('--t', Math.max(0, 1 - el / v.limit).toFixed(4));
       fill.classList.toggle('hurry', v.limit - el < 5000);
       if (pad) pad.tick(el);
       if (el >= v.limit) { if (pad && !pad.done) pad.lock('Zeit um'); return; }

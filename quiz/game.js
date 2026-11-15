@@ -78,9 +78,46 @@ document.addEventListener('keydown', e => {
 
 function show(html, cls = '') {
   unlisten();
+  if (insetWatch) { insetWatch.disconnect(); insetWatch = null; }
   app.className = 'screen ' + cls;
   app.innerHTML = html;
   window.scrollTo(0, 0);
+}
+
+/*
+  Bildschirme mit Figuren: Die Papier-Bühne füllt das ganze Fenster (Klasse is-full),
+  Überschriften und Leisten liegen darüber. Elemente mit data-inset="top|bottom|left|right"
+  melden der Bühne, wie viel Rand sie verdecken, damit die Kamera die Figuren im freien
+  Bereich hält.
+*/
+const FULL = Stage.ok ? ' is-full' : '';
+let insetWatch = null;
+function fitStage() {
+  const el = $('#stage');
+  if (!el || !Stage.ok) return;
+  const r = el.getBoundingClientRect();
+  const ins = { top: 0, right: 0, bottom: 0, left: 0 };
+  $$('[data-inset]').forEach(h => {
+    if (getComputedStyle(h).position !== 'absolute') return;   // schmale Fenster: Bühne steht als Block im Textfluss
+    const b = h.getBoundingClientRect();
+    if (!b.width || !b.height) return;
+    const side = h.dataset.inset;
+    if (side === 'top') ins.top = Math.max(ins.top, b.bottom - r.top);
+    else if (side === 'bottom') ins.bottom = Math.max(ins.bottom, r.bottom - b.top);
+    else if (side === 'left') ins.left = Math.max(ins.left, b.right - r.left);
+    else if (side === 'right') ins.right = Math.max(ins.right, r.right - b.left);
+  });
+  Stage.setInsets(ins);
+}
+function mountStage() {
+  if (!Stage.ok) return;
+  Stage.mount($('#stage'));
+  fitStage();
+  if ('ResizeObserver' in window) {
+    insetWatch = new ResizeObserver(fitStage);
+    $$('[data-inset]').forEach(h => insetWatch.observe(h));
+    insetWatch.observe(app);
+  }
 }
 
 /* handler(spielerIndex, wert, quelle). Tastatur liefert den Platz 0–3, Handys ihren gewählten Wert. */
@@ -445,17 +482,21 @@ async function questionPhase(q, opts) {
   });
 
   show(`
-    <div class="quiz ${remote ? 'quiz-remote' : ''}">
-      <header class="qhead">
-        <span class="label">${esc(opts.label)}</span>
-        <span class="label cat">${esc(q.cat)}</span>
-        ${opts.mult > 1 ? `<span class="label mult">× ${opts.mult} Punkte</span>` : ''}
-      </header>
-      ${opts.climb && !Stage.ok ? climbTrack() : ''}
-      <h2 class="question">${esc(q.text)}</h2>
-      ${Stage.ok ? `<div class="stage-wrap ${remote ? 'stage-big' : 'stage-small'}" id="stage"></div>` : ''}
-      ${remote && (!Stage.ok || opts.climb) ? `<div class="tv-answers waiting">${baseOrder.map(a => `<div class="tv-ans" data-a="${a}">${esc(q.answers[a])}</div>`).join('')}</div>` : ''}
-      <div class="timer" aria-hidden="true"><div class="timer-fill"></div></div>
+    <div class="quiz ${remote ? 'quiz-remote' : 'quiz-local'}">
+      ${Stage.ok ? '<div class="stage-full" id="stage"></div>' : ''}
+      <div class="hud hud-top" data-inset="top">
+        <header class="qhead">
+          <span class="label">${esc(opts.label)}</span>
+          <span class="label cat">${esc(q.cat)}</span>
+          ${opts.mult > 1 ? `<span class="label mult">× ${opts.mult} Punkte</span>` : ''}
+        </header>
+        ${opts.climb && !Stage.ok ? climbTrack() : ''}
+        <h2 class="question">${esc(q.text)}</h2>
+        <div class="timer" aria-hidden="true"><div class="timer-fill"></div></div>
+        ${remote && (!Stage.ok || opts.climb) ? `<div class="tv-answers waiting">${baseOrder.map(a => `<div class="tv-ans" data-a="${a}">${esc(q.answers[a])}</div>`).join('')}</div>` : ''}
+      </div>
+      <div class="hud hud-bottom" data-inset="bottom">
+      <div class="after" hidden><button class="btn btn-go" id="go">Weiter <kbd>Enter</kbd></button></div>
       <div class="panels panels-${n} ${remote ? 'panels-remote' : ''}">
         ${st.map((s, i) => `
           <section class="panel" data-p="${i}" style="--pc:${s.p.color}">
@@ -468,11 +509,11 @@ async function questionPhase(q, opts) {
             ${remote ? '<div class="pstatus">Hör zu …</div>' : '<div class="answer-zone"><p class="listen">Hör zu …</p></div>'}
           </section>`).join('')}
       </div>
-      <div class="after" hidden><button class="btn btn-go" id="go">Weiter <kbd>Enter</kbd></button></div>
-    </div>`, 'is-quiz');
+      </div>
+    </div>`, 'is-quiz' + FULL);
 
   const panels = $$('.panel');
-  const fill = $('.timer-fill');
+  const fill = $('.timer-fill'), timerEl = $('.timer');
   const setStatus = (i, text, cls = '') => {
     const el = $('.pstatus', panels[i]);
     if (el) { el.textContent = text; el.className = 'pstatus ' + cls; }
@@ -481,7 +522,7 @@ async function questionPhase(q, opts) {
   const answerTexts = baseOrder.map(a => q.answers[a]);
   const fxNames = s => s.fx.map(f => SABOTAGES[f].name);
   if (Stage.ok) {
-    Stage.mount($('#stage'));
+    mountStage();
     Stage.setPlayers(figList());
     Stage.setAnswers(null);
     Stage.layout(opts.climb ? 'climb' : 'question', { steps: climbSteps(), summit: SETTINGS.summit });
@@ -546,7 +587,7 @@ async function questionPhase(q, opts) {
   function frame(now) {
     if (finished) return;
     const el = now - start;
-    fill.style.transform = `scaleX(${Math.max(0, 1 - el / limit)})`;
+    timerEl.style.setProperty('--t', Math.max(0, 1 - el / limit).toFixed(4));
     fill.classList.toggle('hurry', limit - el < 5000);
     const sec = Math.ceil((limit - el) / 1000);
     if (sec <= 5 && sec !== lastTick && sec > 0) { lastTick = sec; Sound.tick(); }
@@ -628,6 +669,7 @@ async function questionPhase(q, opts) {
     });
     if (Stage.ok) {
       if (opts.climb) {
+        st.forEach(s => Stage.setLabel(figId(s.p), { status: '', fx: [] }));
         Stage.climb(climbSteps());
         results.forEach(r => {
           Stage.mood(figId(r.p), r.correct ? 'cheer' : r.answered ? 'sad' : 'idle');
@@ -701,15 +743,20 @@ async function finale() {
   const ranked = S.players.slice().sort((a, b) => b.climb - a.climb);
   show(`
     <div class="intro">
-      <p class="kicker">Finale</p>
-      <h1 class="intro-title">Gipfelsturm</h1>
-      <p class="intro-text">Wer zuerst Stufe ${SETTINGS.summit} erreicht, gewinnt. Richtig bringt eine Stufe, die schnellste richtige Antwort zwei. Wer falsch antwortet, rutscht eine Stufe ab.</p>
-      ${Stage.ok ? '<div class="stage-wrap stage-intro" id="stage"></div>' : climbTrack()}
-      <p class="intro-text small">${n > 1 ? `Startplätze nach Punkten: ${ranked.map(p => `${esc(p.name)} Stufe ${p.climb}`).join(' · ')}` : 'Schaffst du es nach oben?'}</p>
-      <button class="btn btn-go" id="go">Los <kbd>Enter</kbd></button>
-    </div>`, 'is-intro');
+      ${Stage.ok ? '<div class="stage-full" id="stage"></div>' : ''}
+      <div class="hud hud-top" data-inset="top">
+        <p class="kicker">Finale</p>
+        <h1 class="intro-title">Gipfelsturm</h1>
+        <p class="intro-text">Wer zuerst Stufe ${SETTINGS.summit} erreicht, gewinnt. Richtig bringt eine Stufe, die schnellste richtige Antwort zwei. Wer falsch antwortet, rutscht eine Stufe ab.</p>
+      </div>
+      ${Stage.ok ? '' : climbTrack()}
+      <div class="hud hud-bottom foot-col" data-inset="bottom">
+        <p class="intro-text small">${n > 1 ? `Startplätze nach Punkten: ${ranked.map(p => `${esc(p.name)} Stufe ${p.climb}`).join(' · ')}` : 'Schaffst du es nach oben?'}</p>
+        <button class="btn btn-go" id="go">Los <kbd>Enter</kbd></button>
+      </div>
+    </div>`, 'is-intro' + FULL);
   if (Stage.ok) {
-    Stage.mount($('#stage'));
+    mountStage();
     Stage.setPlayers(figList());
     Stage.layout('climb', { steps: climbSteps(), summit: SETTINGS.summit });
   }
@@ -732,11 +779,13 @@ function winner() {
   Sound.win();
   show(`
     <div class="final">
-      <canvas id="confetti" aria-hidden="true"></canvas>
-      <p class="kicker">Gipfel erreicht</p>
-      <h1 class="intro-title winner-name" style="--pc:${champ.color}">${esc(champ.name)}</h1>
-      ${Stage.ok ? '<div class="stage-wrap stage-podium" id="stage"></div>' : ''}
-      <p class="intro-text">${S.players.length > 1 ? 'gewinnt Kopfnuss!' : `Geschafft. ${champ.correctCount} richtige Antworten in der Vorrunde.`}</p>
+      ${Stage.ok ? '<div class="stage-full" id="stage"></div>' : '<canvas id="confetti" aria-hidden="true"></canvas>'}
+      <div class="hud hud-top" data-inset="top">
+        <p class="kicker">Gipfel erreicht</p>
+        <h1 class="intro-title winner-name" style="--pc:${champ.color}">${esc(champ.name)}</h1>
+        <p class="intro-text winner-text">${S.players.length > 1 ? 'gewinnt Kopfnuss!' : `Geschafft. ${champ.correctCount} richtige Antworten in der Vorrunde.`}</p>
+      </div>
+      <div class="hud hud-bottom" data-inset="bottom">
       <ol class="ranking">${ps.map((p, i) => `
         <li style="--pc:${p.color}">
           <span class="rank">${i + 1}.</span>
@@ -748,9 +797,10 @@ function winner() {
         <button class="btn btn-go" id="again">Nochmal mit denselben Leuten</button>
         <button class="btn btn-ghost" id="setup">${S.remote ? 'Zurück zur Lobby' : 'Neue Spielrunde einrichten'}</button>
       </div>
-    </div>`, 'is-final');
+      </div>
+    </div>`, 'is-final' + FULL);
   if (Stage.ok) {
-    Stage.mount($('#stage'));
+    mountStage();
     Stage.setPlayers(figList());
     Stage.layout('podium', { ranks: ps.map(figId) });
   }
@@ -904,24 +954,28 @@ function lobbyScreen() {
   const qr = qrSvg(url);
   show(`
     <div class="lobby">
-      <section class="box lobby-join">
-        <p class="kicker kicker-dark">Mit dem Handy beitreten</p>
+      ${Stage.ok ? '<div class="stage-full" id="stage"></div>' : ''}
+      <section class="box lobby-join" data-inset="left">
+        <p class="kicker">Mit dem Handy beitreten</p>
         ${qr ? `<div class="qr" role="img" aria-label="QR-Code zum Beitreten">${qr}</div>` : ''}
         <p class="room-label">Raumcode</p>
         <p class="room-code">${Remote.room}</p>
         <p class="room-url">${esc(url)}</p>
       </section>
       <section class="lobby-side">
-        <h2 class="choose-title">Wer ist dabei?</h2>
-        <p class="net-status" id="net"></p>
-        ${Stage.ok ? '<div class="stage-wrap stage-lobby" id="stage"></div>' : ''}
-        <ul class="lobby-list" id="list"></ul>
-        <div class="btn-row">
-          <button class="btn btn-go" id="start" disabled>Spiel starten</button>
-          <button class="btn btn-ghost" id="back">Zurück</button>
+        <div class="hud lobby-head" data-inset="top">
+          <h2 class="choose-title">Wer ist dabei?</h2>
+          <p class="net-status" id="net"></p>
+        </div>
+        <div class="hud lobby-foot" data-inset="bottom">
+          <ul class="lobby-list" id="list"></ul>
+          <div class="btn-row">
+            <button class="btn btn-go" id="start" disabled>Spiel starten</button>
+            <button class="btn btn-ghost" id="back">Zurück</button>
+          </div>
         </div>
       </section>
-    </div>`, 'is-lobby');
+    </div>`, 'is-lobby' + FULL);
 
   const statusText = {
     connecting: 'Verbinde mit dem Server …',
@@ -952,7 +1006,7 @@ function lobbyScreen() {
       Stage.layout('lobby');
     }
   };
-  if (Stage.ok) Stage.mount($('#stage'));
+  mountStage();
   Remote.onChange();
 
   $('#start').addEventListener('click', () => {
