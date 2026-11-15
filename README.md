@@ -74,4 +74,6 @@ Sobald Figuren zu sehen sind (Lobby, Frage, Auflösung, Finale, Sieger), füllt 
 - `quiz/net.js`: Verbindung zwischen Bildschirm und Handys (direkt per WebRTC, wahlweise Supabase oder Testmodus).
 - `quiz/common.js`, `quiz/style.css`: gemeinsame Bausteine und Aussehen.
 
+**Nach Änderungen:** In `quiz/index.html` und `quiz/controller.html` hängt an jeder Datei `?v=…`. Diese Nummer bei jeder Veröffentlichung erhöhen, sonst laden Browser bis zu 10 Minuten lang noch die alten Dateien.
+
 **Lokal testen:** Im Hauptordner `python3 -m http.server 4173` starten und `http://localhost:4173/quiz/` öffnen. Mit `http://localhost:4173/quiz/?lokal` läuft der Handy-Modus ohne Server: Dann den Link aus der Lobby in weiteren Tabs desselben Browsers öffnen, jeder Tab spielt ein Handy.
