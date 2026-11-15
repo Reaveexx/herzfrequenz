@@ -15,15 +15,129 @@ const DEFAULT_NAMES = ['Koralle', 'Sonne', 'Minze', 'Himmel'];
 const keyLabel = k => k.toUpperCase();
 const app = document.getElementById('app');
 
-/* ---------- Sprecherstimme (Web Speech API, läuft im Browser) ---------- */
+/* ---------- Brabbelsprache: lustige Fantasiestimme aus dem Synthesizer ---------- */
+const Babble = (() => {
+  // Formanten pro Vokal: daran erkennt das Ohr "a", "i", "o" …
+  const VOWELS = { a: [850, 1250], e: [520, 1900], i: [330, 2300], o: [500, 920], u: [360, 760], 'ä': [680, 1700], 'ö': [460, 1500], 'ü': [310, 1750], y: [330, 2100] };
+  const EMOTES = {
+    tada: [{ t: 0, dur: 0.1, f: 520, v: 'a' }, { t: 0.12, dur: 0.36, f: 700, to: 780, v: 'a' }],
+    yay: [{ t: 0, dur: 0.11, f: 540, v: 'a' }, { t: 0.13, dur: 0.34, f: 640, to: 900, v: 'i' }],
+    oh: [{ t: 0, dur: 0.45, f: 520, to: 250, v: 'o' }],
+    hm: [{ t: 0, dur: 0.16, f: 330, to: 350, v: 'u' }, { t: 0.2, dur: 0.22, f: 370, to: 430, v: 'u' }],
+    hihi: [{ t: 0, dur: 0.09, f: 720, v: 'i' }, { t: 0.12, dur: 0.09, f: 660, v: 'i' }, { t: 0.24, dur: 0.09, f: 610, v: 'i' }, { t: 0.36, dur: 0.14, f: 560, v: 'i' }]
+  };
+
+  /* Zerlegt einen Text in Silben-Töne. Fragen gehen am Ende hoch, Ausrufe sind höher. */
+  function plan(text, { base = 370, emote = null } = {}) {
+    const notes = [];
+    let t = 0;
+    if (emote && EMOTES[emote]) {
+      EMOTES[emote].forEach(n => notes.push({ ...n, formants: VOWELS[n.v] }));
+      t = Math.max(...EMOTES[emote].map(n => n.t + n.dur)) + 0.18;
+    }
+    const sentences = String(text || '').toLowerCase().match(/[^.!?…]+[.!?…]*/g) || [];
+    for (const sentence of sentences) {
+      const mine = [];
+      let prevVowel = false;
+      for (const c of sentence) {
+        const formants = VOWELS[c] || (/[0-9]/.test(c) ? VOWELS.e : null);
+        if (formants) {
+          if (!prevVowel || /[0-9]/.test(c)) { mine.push({ t, dur: 0.085, f: base * (0.88 + Math.random() * 0.3), formants }); t += 0.1; }
+          prevVowel = true;
+        } else {
+          prevVowel = false;
+          if (c === ' ') t += 0.04;
+          else if (',;:–-'.includes(c)) t += 0.12;
+        }
+      }
+      const end = sentence.trim().slice(-1);
+      const last = mine.length - 1;
+      mine.forEach((n, i) => {
+        const fromEnd = last - i;
+        if (end === '?') n.f *= [1.5, 1.25, 1.1][fromEnd] || 1;
+        else if (end === '!') n.f *= fromEnd === 0 ? 1.35 : 1.12;
+        else n.f *= [0.82, 0.92][fromEnd] || 1;
+      });
+      if (last >= 0) mine[last].dur = 0.14;
+      notes.push(...mine);
+      t += 0.24;
+    }
+    const kept = notes.filter(n => n.t < 7);
+    const length = kept.length ? Math.max(...kept.map(n => n.t + n.dur)) : 0;
+    return { notes: kept, length };
+  }
+
+  /* Baut die Töne in einen AudioContext (auch OfflineAudioContext zum Testen). */
+  function render(ctx, dest, pl, t0, volume = 1) {
+    const master = ctx.createGain();
+    master.gain.value = 1.2 * volume;
+    master.connect(dest);
+    pl.notes.forEach(n => {
+      const start = t0 + n.t;
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(n.f * (n.to ? 1 : 1.06), start);
+      osc.frequency.exponentialRampToValueAtTime(n.to || n.f * 0.94, start + n.dur);
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, start);
+      env.gain.exponentialRampToValueAtTime(1, start + 0.012);
+      env.gain.setValueAtTime(1, start + n.dur * 0.6);
+      env.gain.exponentialRampToValueAtTime(0.0001, start + n.dur);
+      n.formants.forEach((freq, k) => {
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = 6;
+        const g = ctx.createGain(); g.gain.value = k ? 0.55 : 1;
+        osc.connect(bp); bp.connect(g); g.connect(env);
+      });
+      env.connect(master);
+      osc.start(start); osc.stop(start + n.dur + 0.03);
+    });
+    return master;
+  }
+
+  let current = null;
+  function stop() {
+    if (!current) return;
+    const c = current; current = null;
+    clearTimeout(c.timer);
+    try { c.master.gain.setTargetAtTime(0, Sound.ctx.currentTime, 0.01); setTimeout(() => c.master.disconnect(), 120); } catch { /* egal */ }
+    c.resolve();
+  }
+  function say(text, opts = {}) {
+    stop();
+    const pl = plan(text, opts);
+    Sound.init();
+    const ctx = Sound.ctx;
+    return new Promise(resolve => {
+      if (!ctx || !pl.notes.length) return setTimeout(resolve, ctx ? 0 : pl.length * 1000);
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      const master = render(ctx, ctx.destination, pl, ctx.currentTime + 0.05);
+      const timer = setTimeout(() => { if (current && current.master === master) current = null; resolve(); }, pl.length * 1000 + 180);
+      current = { master, timer, resolve };
+    });
+  }
+  return { plan, render, say, stop, emote: kind => say('', { emote: kind }) };
+})();
+
+/* ---------- Sprecherstimme ---------- */
+/*
+  Drei Arten:
+    comic   – liest mit der Sprachausgabe des Browsers vor, aber hoch und flott
+              wie eine Zeichentrickfigur, mit kleinen Brabbel-Ausrufen davor
+    brabbel – reine Fantasiesprache aus dem Synthesizer (klingt auf jedem Gerät gleich)
+    normal  – die normale Vorlesestimme des Geräts
+*/
 const Voice = {
-  supported: 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window,
+  speech: 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window,
+  supported: true,
   on: pref('kopfnuss-stimme', true),
+  style: (() => { try { const v = localStorage.getItem('kopfnuss-stimme-art'); return ['comic', 'brabbel', 'normal'].includes(v) ? v : 'comic'; } catch { return 'comic'; } })(),
   voices: [],
   voice: null,
   onVoices: null,
+  seq: 0,
   init() {
-    if (!this.supported) return;
+    if (!this.speech) return;
     const load = () => {
       this.voices = speechSynthesis.getVoices().filter(v => /^de/i.test(v.lang));
       let saved = null; try { saved = localStorage.getItem('kopfnuss-stimme-name'); } catch { /* egal */ }
@@ -39,32 +153,59 @@ const Voice = {
     this.voice = this.voices.find(v => v.name === name) || this.voice;
     try { localStorage.setItem('kopfnuss-stimme-name', name); } catch { /* egal */ }
   },
-  /* Liest vor und meldet sich, wenn fertig. Notfalls nach geschätzter Sprechdauer. */
-  say(text) {
+  setStyle(style) {
+    this.style = style;
+    try { localStorage.setItem('kopfnuss-stimme-art', style); } catch { /* egal */ }
+  },
+  /* Welche Art wirklich läuft: ohne Sprachausgabe im Browser bleibt nur die Brabbelsprache. */
+  get mode() { return this.style === 'brabbel' || !this.speech ? 'brabbel' : this.style; },
+  /* Schaltet die Sprachausgabe auf Handys und Tablets frei (braucht einen Klick). */
+  prime() {
+    Sound.init();
+    if (this.on && this.speech) { try { speechSynthesis.speak(new SpeechSynthesisUtterance(' ')); } catch { /* egal */ } }
+  },
+  /* Spricht und meldet sich, wenn fertig. emote: kleiner Ausruf davor (tada, yay, oh, hm, hihi). */
+  say(text, { emote = null } = {}) {
+    this.stop();
+    if (!this.on || !String(text || '').trim()) return Promise.resolve();
+    if (this.mode === 'brabbel') return Babble.say(text, { emote });
+    const comic = this.mode === 'comic';
+    const mine = ++this.seq;
     return new Promise(resolve => {
-      if (!this.on || !this.supported || !text) return resolve();
-      speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.lang = 'de-DE';
       if (this.voice) u.voice = this.voice;
-      u.rate = 1.05;
+      u.pitch = comic ? 1.6 + Math.random() * 0.3 : 1;
+      u.rate = comic ? 1.12 : 1.05;
       let done = false;
-      const t = setTimeout(() => fin(), 1200 + text.length * 85);
+      const lead = comic && emote ? 520 : 60;
+      const t = setTimeout(() => fin(), lead + 1200 + text.length * 85);
       function fin() { if (!done) { done = true; clearTimeout(t); resolve(); } }
       u.onend = fin; u.onerror = fin;
-      setTimeout(() => speechSynthesis.speak(u), 60);
+      if (comic && emote) Babble.emote(emote);
+      setTimeout(() => { if (mine === this.seq) speechSynthesis.speak(u); else fin(); }, lead);
     });
   },
-  stop() { if (this.supported) speechSynthesis.cancel(); }
+  stop() {
+    this.seq++;
+    Babble.stop();
+    if (this.speech) speechSynthesis.cancel();
+  }
 };
 Voice.init();
 
 const LINES = {
-  allRight: ['Alle richtig. Stark!', 'Das war wohl zu leicht für euch.', 'Respekt, das wussten alle.'],
-  noneRight: ['Autsch. Das wusste keiner.', 'Keiner? Wirklich keiner?', 'Da müsst ihr wohl nochmal nachlesen.'],
-  soloRight: ['Richtig!', 'Sehr gut.', 'Genau so.'],
-  soloWrong: ['Leider falsch.', 'Knapp daneben.', 'Das war nichts.']
+  allRight: ['Jippie! Alle richtig!', 'Wow, wow, wow! Lauter Schlauköpfe!', 'Na toll. Ihr seid ja alle gleich schlau!', 'Bingo, bingo, bingo! Das wussten alle.'],
+  noneRight: ['Auweia! Das wusste keiner.', 'Oh-oh! Kollektive Kopfnuss!', 'Hoppla! Alle daneben. Peinlich, peinlich!', 'Keiner? Wirklich keiner? Oje, oje!'],
+  fastest: ['Zack! {name} war am schnellsten!', '{name} hat den Turbo gezündet!', 'Blitzmerker {name}! Schneller als der Schall!', 'Wusch! {name} war zuerst da!'],
+  soloRight: ['Jawoll!', 'Bingo!', 'Volltreffer!', 'Jippie, richtig!'],
+  soloWrong: ['Hoppla, daneben!', 'Auweia!', 'Oh-oh, das war nix!', 'Knapp vorbei ist auch daneben!'],
+  rounds: ['Auf geht’s! Runde {r}. {title}!', 'Trommelwirbel! Runde {r}. {title}!', 'Juhu! Runde {r}. {title}!'],
+  category: ['{name}, du bist dran! Welche Kategorie darf’s sein?', 'Hopp, hopp, {name}! Such eine Kategorie aus!', '{name} hat die Wahl! Na, was nehmen wir?'],
+  trap: ['{name}, such dir eine fiese Falle aus! Hihihi!', 'Psst, {name}! Wen ärgern wir heute?', '{name}, jetzt wird’s gemein! Wähle eine Falle!'],
+  reveal: ['Und richtig ist: {answer}!', 'Die Antwort lautet: {answer}!', 'Tadaa! Es ist: {answer}!']
 };
+const line = (key, vars = {}) => pick(LINES[key]).replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
 
 /* ---------- Eingaben: Tastatur, Klick und Handys landen alle hier ---------- */
 let keyHandler = null;
@@ -290,7 +431,7 @@ async function runGame() {
       title,
       text: solo ? `${SETTINGS.perRound} Fragen. Je schneller du richtig antwortest, desto mehr Punkte.`
         : `${SETTINGS.perRound} Fragen. Vorher dürft ihr euch gegenseitig Steine in den Weg legen.`,
-      speak: `Runde ${r}. ${title}!`
+      speak: line('rounds', { r, title })
     });
     if (!solo) await sabotagePhase();
     for (let q = 1; q <= SETTINGS.perRound; q++) {
@@ -314,7 +455,8 @@ function introScreen({ kicker, title, text, speak }) {
       <p class="intro-text">${esc(text)}</p>
       <button class="btn btn-go" id="go">Weiter <kbd>Enter</kbd></button>
     </div>`, 'is-intro');
-  Voice.say(speak || title);
+  Sound.fanfare();
+  Voice.say(speak || title, { emote: 'tada' });
   return waitContinue($('#go'), () => ({ k: 'wait', title: kicker, text: title }));
 }
 
@@ -332,7 +474,7 @@ function chooserFor() {
 }
 
 /* Eine Person wählt aus Karten. Gibt den Index der gewählten Karte zurück. */
-function choiceScreen({ kicker, title, hint, chooser, cards, phoneTitle, waitText, speak, cardClass = '', sound = 'click' }) {
+function choiceScreen({ kicker, title, hint, chooser, cards, phoneTitle, waitText, speak, emote = 'hm', cardClass = '', sound = 'click' }) {
   const ci = S.players.indexOf(chooser);
   show(`
     <div class="choose">
@@ -349,7 +491,7 @@ function choiceScreen({ kicker, title, hint, chooser, cards, phoneTitle, waitTex
           </button>`).join('')}
       </div>
     </div>`, 'is-choose');
-  if (speak) Voice.say(speak);
+  if (speak) Voice.say(speak, { emote });
   Remote.setAll(p => p === chooser
     ? { k: 'pick', title: phoneTitle, options: cards.map(c => ({ label: c.label, sub: c.sub || '', icon: c.icon || '', color: c.color || '' })) }
     : { k: 'wait', title: `${chooser.name} wählt`, text: waitText });
@@ -381,7 +523,7 @@ async function categoryPhase(round, q) {
     cardClass: 'cat-card',
     phoneTitle: 'Wähle die Kategorie',
     waitText: 'die nächste Kategorie.',
-    speak: `${chooser.name}, wähle eine Kategorie.`
+    speak: line('category', { name: chooser.name })
   });
   return cats[i];
 }
@@ -403,7 +545,8 @@ async function sabotagePhase() {
       cardClass: 'sabo-card',
       phoneTitle: 'Such dir eine Falle aus',
       waitText: 'eine Falle aus.',
-      speak: `${p.name}, such dir eine Falle aus.`
+      speak: line('trap', { name: p.name }),
+      emote: 'hihi'
     });
     const choice = options[oi];
     if (choice === 'schild') { plans.push({ from: p, type: 'schild' }); continue; }
@@ -445,7 +588,7 @@ async function sabotagePhase() {
     </div>`, 'is-choose');
   const hits = plans.filter(x => x.target && !x.blocked).length;
   const blocks = plans.filter(x => x.blocked).length;
-  Voice.say(hits ? `Mal sehen, wen es erwischt hat.${blocks ? ' Und ein Schild hat sogar etwas abgewehrt.' : ''}` : 'Alle Fallen wurden abgewehrt!');
+  Voice.say(hits ? `Oh-oh! Mal sehen, wen es erwischt hat!${blocks ? ' Und zack: Ein Schild hat sogar etwas abgewehrt!' : ''}` : 'Boing! Alle Fallen wurden abgewehrt!', { emote: hits ? 'hihi' : 'yay' });
   await waitContinue($('#go'), p => ({
     k: 'wait',
     title: p.pending.length ? 'Achtung!' : 'Glück gehabt',
@@ -531,8 +674,7 @@ async function questionPhase(q, opts) {
 
   // Erst vorlesen, dann geht die Zeit los. Die Frage steht nur auf dem Fernseher.
   Remote.setAll(() => ({ k: 'wait', title: 'Hör gut zu …', text: 'Die Frage steht auf dem Fernseher.' }));
-  if (Voice.on && Voice.supported) await Voice.say(q.text);
-  else await wait(900);
+  await Promise.all([Voice.say(q.text, { emote: 'hm' }), wait(900)]);
   if (Stage.ok) {
     if (remote && !opts.climb) Stage.setAnswers(answerTexts);
     st.forEach(s => { Stage.setLabel(figId(s.p), { status: 'überlegt …', fx: fxNames(s) }); Stage.mood(figId(s.p), 'think'); });
@@ -623,6 +765,7 @@ async function questionPhase(q, opts) {
     if (Stage.ok && !opts.climb) {
       Stage.setAnswers(answerTexts);
       st.forEach(s => Stage.setLabel(figId(s.p), { status: '', fx: [] }));
+      Sound.drumroll();
       await Stage.walkToPads(st.filter(s => s.choice !== null).map(s => ({ id: figId(s.p), pad: baseOrder.indexOf(s.choice) })));
       await wait(350);
     }
@@ -640,7 +783,7 @@ async function questionPhase(q, opts) {
     });
     const rightOnes = results.filter(r => r.correct);
     const fastest = rightOnes.slice().sort((a, b) => a.at - b.at)[0];
-    rightOnes.length ? Sound.good() : Sound.bad();
+    rightOnes.length ? Sound.good() : Sound.whoops();
 
     if (opts.climb) {
       results.forEach(r => {
@@ -688,8 +831,8 @@ async function questionPhase(q, opts) {
     if (n === 1) comment = pick(rightOnes.length ? LINES.soloRight : LINES.soloWrong);
     else if (rightOnes.length === n) comment = pick(LINES.allRight);
     else if (!rightOnes.length) comment = pick(LINES.noneRight);
-    else comment = `${fastest.p.name} war am schnellsten.`;
-    Voice.say(`Richtig ist: ${answerText}. ${comment}`);
+    else comment = line('fastest', { name: fastest.p.name });
+    Voice.say(`${line('reveal', { answer: answerText })} ${comment}`, { emote: rightOnes.length ? 'yay' : 'oh' });
 
     $('.after').hidden = false;
     await waitContinue($('#go'), p => {
@@ -730,7 +873,7 @@ function standings(r) {
       <p class="choose-hint">${last ? 'Gleich geht es zum Gipfel. Wer vorne liegt, startet weiter oben.' : 'Weiter geht’s mit der nächsten Runde.'}</p>
       <button class="btn btn-go" id="go">${last ? 'Zum Finale' : 'Nächste Runde'} <kbd>Enter</kbd></button>
     </div>`, 'is-choose');
-  Voice.say(S.players.length > 1 ? `Zwischenstand. Vorne liegt ${sorted[0].name}.` : `Du hast ${sorted[0].score} Punkte.`);
+  Voice.say(S.players.length > 1 ? `Trommelwirbel! Zwischenstand! Vorne liegt: ${sorted[0].name}!` : `Nicht schlecht! Du hast ${sorted[0].score} Punkte!`, { emote: 'tada' });
   return waitContinue($('#go'), p => ({
     k: 'wait', title: `Platz ${sorted.indexOf(p) + 1}`, text: `${p.score.toLocaleString('de-DE')} Punkte`
   }));
@@ -760,7 +903,8 @@ async function finale() {
     Stage.setPlayers(figList());
     Stage.layout('climb', { steps: climbSteps(), summit: SETTINGS.summit });
   }
-  Voice.say('Das Finale. Gipfelsturm! Wer zuerst oben ist, gewinnt.');
+  Sound.fanfare();
+  Voice.say('Finale! Gipfelsturm! Hopp, hopp, hopp: Wer zuerst oben ist, gewinnt!', { emote: 'tada' });
   await waitContinue($('#go'), p => ({ k: 'wait', title: 'Gipfelsturm', text: `Du startest auf Stufe ${p.climb}.` }));
 
   let count = 0;
@@ -804,7 +948,7 @@ function winner() {
     Stage.setPlayers(figList());
     Stage.layout('podium', { ranks: ps.map(figId) });
   }
-  Voice.say(S.players.length > 1 ? `${champ.name} gewinnt Kopfnuss! Herzlichen Glückwunsch.` : 'Gipfel erreicht. Glückwunsch!');
+  Voice.say(S.players.length > 1 ? `Tadaa! ${champ.name} gewinnt Kopfnuss! Jippie! Herzlichen Glückwunsch!` : 'Tadaa! Gipfel erreicht! Jippie!', { emote: 'yay' });
   Remote.setAll(p => ({
     k: 'wait',
     title: p === champ ? 'Du hast gewonnen!' : `Platz ${ps.indexOf(p) + 1}`,
@@ -884,13 +1028,18 @@ function setupScreen() {
           </ol>
           <div class="toggles">
             <label class="toggle"><input type="checkbox" id="sound" ${Sound.on ? 'checked' : ''}> Soundeffekte</label>
-            <label class="toggle"><input type="checkbox" id="voice" ${Voice.on ? 'checked' : ''} ${Voice.supported ? '' : 'disabled'}> Fragen vorlesen</label>
+            <label class="toggle"><input type="checkbox" id="voice" ${Voice.on ? 'checked' : ''}> Fragen vorlesen</label>
             <div class="voice-row" id="voice-row">
-              <label for="voice-pick" class="sr-only">Stimme</label>
+              <label for="voice-style" class="sr-only">Art der Stimme</label>
+              <select id="voice-style">
+                <option value="comic" ${Voice.style === 'comic' ? 'selected' : ''} ${Voice.speech ? '' : 'disabled'}>Comic-Stimme (hoch und frech)</option>
+                <option value="brabbel" ${Voice.mode === 'brabbel' ? 'selected' : ''}>Brabbelsprache (Fantasiestimme)</option>
+                <option value="normal" ${Voice.style === 'normal' ? 'selected' : ''} ${Voice.speech ? '' : 'disabled'}>Normale Vorlesestimme</option>
+              </select>
+              <label for="voice-pick" class="sr-only">Stimme des Geräts</label>
               <select id="voice-pick"></select>
               <button class="btn btn-ghost btn-small" id="voice-test">Probehören</button>
             </div>
-            ${Voice.supported ? '' : '<p class="rules-note">Dieser Browser kann nicht vorlesen.</p>'}
           </div>
         </section>
       </div>
@@ -917,7 +1066,8 @@ function setupScreen() {
     const sel = $('#voice-pick');
     if (!sel) return;
     sel.innerHTML = Voice.voices.map(v => `<option value="${esc(v.name)}" ${Voice.voice === v ? 'selected' : ''}>${esc(v.name)}</option>`).join('') || '<option>Standardstimme</option>';
-    $('#voice-row').hidden = !Voice.supported || !Voice.on;
+    sel.hidden = Voice.mode === 'brabbel';
+    $('#voice-row').hidden = !Voice.on;
   };
   renderPlayers(); renderMode(); renderVoices();
   Voice.onVoices = renderVoices;
@@ -931,13 +1081,15 @@ function setupScreen() {
   $('#sound').addEventListener('change', e => { Sound.on = e.target.checked; Sound.init(); setPref('kopfnuss-sound', Sound.on); Sound.click(); });
   $('#voice').addEventListener('change', e => {
     Voice.on = e.target.checked; setPref('kopfnuss-stimme', Voice.on); renderVoices();
-    if (Voice.on) Voice.say('Hallo! Ich lese euch die Fragen vor.'); else Voice.stop();
+    if (Voice.on) Voice.say('Hallo, hallo! Ich lese euch die Fragen vor!', { emote: 'yay' }); else Voice.stop();
   });
-  $('#voice-pick').addEventListener('change', e => { Voice.choose(e.target.value); Voice.say('So klinge ich.'); });
-  $('#voice-test').addEventListener('click', () => Voice.say('Willkommen bei Kopfnuss! Wie viele Herzen hat ein Oktopus?'));
+  const sample = () => Voice.say('Jippie! Willkommen bei Kopfnuss! Wie viele Herzen hat ein Oktopus?', { emote: 'tada' });
+  $('#voice-style').addEventListener('change', e => { Voice.setStyle(e.target.value); renderVoices(); sample(); });
+  $('#voice-pick').addEventListener('change', e => { Voice.choose(e.target.value); sample(); });
+  $('#voice-test').addEventListener('click', sample);
   $('#start').addEventListener('click', () => {
     Sound.init(); Sound.click();
-    if (Voice.on) Voice.say(' ');   // schaltet die Stimme auf Handys und Tablets frei
+    Voice.prime();
     if (setupMode === 'remote') { lobbyScreen(); return; }
     const players = names.slice(0, count).map((nm, i) => ({ name: (nm || '').trim() || DEFAULT_NAMES[i] }));
     newGame({ mode: 'local', players });

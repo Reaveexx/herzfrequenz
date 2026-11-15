@@ -57,7 +57,7 @@ Sobald Figuren zu sehen sind (Lobby, Frage, Auflösung, Finale, Sieger), füllt 
 
 **Handy im Querformat:** Die Frage steht nur auf dem Fernseher, das Handy zeigt die vier Antworten als große Knöpfe nebeneinander. Hält jemand das Handy hochkant, erscheint ein Hinweis zum Drehen; auf Android kann „Vollbild quer“ die Drehung auch festhalten.
 
-**Sprecherstimme:** Fragen, Rundenansagen und Ergebnisse werden mit der Sprachausgabe des Browsers vorgelesen (Web Speech API, ohne Server). Welche deutschen Stimmen es gibt, hängt vom Gerät ab; auf dem Startbildschirm lässt sich eine auswählen und probehören.
+**Sprecherstimme:** Fragen, Rundenansagen und Ergebnisse werden mit frechen Sprüchen vorgelesen. Auf dem Startbildschirm gibt es drei Arten zum Probehören: die *Comic-Stimme* (Sprachausgabe des Browsers, hoch und flott gestellt, mit kleinen Ausrufen aus dem Synthesizer davor), die *Brabbelsprache* (reine Fantasiestimme aus dem Synthesizer, klingt auf jedem Gerät gleich; die Frage steht dabei nur auf dem Bildschirm) und die *normale Vorlesestimme*. Wie die Comic-Stimme genau klingt, hängt von den deutschen Stimmen des Geräts ab. Alles läuft im Browser, ohne Server.
 
 **Dateien**
 - `quiz/questions.js`: Fragenkatalog. Neue Fragen als `["Frage?", "Richtig", "Falsch", "Falsch", "Falsch"]` eintragen.

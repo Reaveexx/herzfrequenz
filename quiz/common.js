@@ -62,6 +62,10 @@ const Sound = {
   crack() { this.tone(1800, 0.05, { type: 'square', vol: 0.05, to: 600 }); },
   sabo() { this.tone(900, 0.35, { type: 'sawtooth', vol: 0.05, to: 140 }); },
   climb() { this.tone(440, 0.12, { type: 'triangle', to: 880 }); },
+  fanfare() { [392, 523, 659, 784, 659, 784, 1047].forEach((f, i) => this.tone(f, i === 6 ? 0.4 : 0.13, { type: 'square', vol: 0.05, delay: i * 0.09 })); },
+  drumroll() { for (let i = 0; i < 16; i++) this.tone(150 + (i % 2) * 30, 0.05, { type: 'triangle', vol: 0.05 + i * 0.006, delay: i * 0.075 }); },
+  whoops() { this.tone(880, 0.55, { type: 'sine', vol: 0.1, to: 160 }); this.tone(140, 0.18, { type: 'square', vol: 0.05, delay: 0.55 }); },
+  boing() { this.tone(180, 0.28, { type: 'sine', vol: 0.12, to: 520 }); },
   win() { [523, 659, 784, 1047, 784, 1047].forEach((f, i) => this.tone(f, 0.22, { type: 'triangle', delay: i * 0.12 })); }
 };
 document.addEventListener('pointerdown', () => Sound.init(), { once: true });
