@@ -207,6 +207,7 @@ const LINES = {
   vote: ['Abstimmung! Durch welche Tür soll es gehen?', 'Vier Türen, eine Wahl! Stimmt ab!', 'Hopp, hopp! Wohin geht die Reise?', 'Tür eins, zwei, drei oder vier? Ihr entscheidet!'],
   voteSolo: ['Vier Türen! Welche darf’s sein?', 'Hopp, hopp! Such dir eine Tür aus!'],
   voteWon: ['{cat}! Alle Mann durch die Tür!', 'Die Mehrheit sagt: {cat}! Los geht’s!', 'Tür auf für: {cat}!'],
+  voteReveal: ['Alle haben gewählt! Mal sehen, wer wohin will!', 'Abstimmung beendet! Und los!', 'Die Stimmen sind drin! Zeigt her!'],
   voteSpin: ['Gleichstand! Der Zufall entscheidet!', 'Unentschieden! Dreh dich, Glücksstern!', 'Oh-oh, keine Mehrheit! Der Zufall muss ran!'],
   voteNone: ['Keiner stimmt ab? Dann entscheidet der Zufall!', 'Na gut, dann würfle ich eben!'],
   voteTie: ['Der Zufall sagt: {cat}!', 'Und es wird: {cat}!', 'Das Los fällt auf: {cat}!'],
@@ -580,15 +581,15 @@ async function categoryPhase(round, q) {
     votes[i] = door;
     const p = S.players[i];
     Sound.lock();
+    // Geheim: Die Figur hüpft nur kurz, läuft aber erst los, wenn alle gewählt haben
+    Stage.lock(figId(p));
     Stage.mood(figId(p), 'idle');
-    Stage.voteWalk(figId(p), door);
+    Stage.setLabel(figId(p), { status: 'abgestimmt', fx: [] });
     if (remote) {
       const el = $('.pstatus', panels[i]);
-      el.textContent = `Tür ${door + 1}: ${cats[door]}`; el.className = 'pstatus is-locked';
-      Remote.setView(p, { k: 'wait', title: 'Abgestimmt', text: cats[door] });
-    } else if (pads[i]) pads[i].lock(`Tür ${door + 1}`);
-    const chips = $(`.tv-ans[data-a="${door}"] .vote-chips`);
-    if (chips) chips.insertAdjacentHTML('beforeend', `<i style="--pc:${p.color}"></i>`);
+      el.textContent = 'Abgestimmt'; el.className = 'pstatus is-locked';
+      Remote.setView(p, { k: 'wait', title: 'Abgestimmt', text: `Du hast ${cats[door]} gewählt. Psst, geheim!` });
+    } else if (pads[i]) pads[i].lock('Abgestimmt');
     if (votes.every(v => v !== null)) setTimeout(finish, 500);
   }
 
@@ -626,17 +627,39 @@ async function categoryPhase(round, q) {
   }
   await voted;
 
+  // Auflösung: Jetzt erst laufen die Figuren nacheinander zu ihrer Tür
+  timerEl.classList.add('done');
+  pads.forEach(pd => pd.destroy());
+  const voters = S.players.map((p, i) => ({ p, i, door: votes[i] })).filter(v => v.door !== null);
+  Remote.setAll(() => ({ k: 'wait', title: 'Schau auf den Fernseher', text: 'Wer hat wofür gestimmt?' }));
+  if (voters.length) {
+    $('.question').textContent = n > 1 ? 'Wer hat wofür gestimmt?' : 'Los geht’s!';
+    if (n > 1) Voice.say(line('voteReveal'), { emote: 'hm' });
+    await wait(Stage.ok ? 700 : 300);
+    const walks = [];
+    for (const v of voters) {
+      Stage.setLabel(figId(v.p), { status: '', fx: [] });
+      walks.push(Stage.voteWalk(figId(v.p), v.door));
+      Sound.hop(v.i * 3);
+      if (remote) { const el = $('.pstatus', panels[v.i]); el.textContent = `Tür ${v.door + 1}: ${cats[v.door]}`; }
+      else if (panels[v.i]) { const z = $('.stamp', panels[v.i]); if (z) z.textContent = `Tür ${v.door + 1}`; }
+      const chips = $(`.tv-ans[data-a="${v.door}"] .vote-chips`);
+      if (chips) chips.insertAdjacentHTML('beforeend', `<i style="--pc:${v.p.color}"></i>`);
+      await wait(Stage.ok ? 450 : 250);
+    }
+    await Promise.all(walks);
+  }
+  S.players.forEach((p, i) => { if (votes[i] === null) Stage.setLabel(figId(p), { status: 'zu spät', fx: [] }); });
+
   // Auszählen: Mehrheit gewinnt, bei Gleichstand (oder ohne Stimmen) entscheidet das Los
   const counts = cats.map((_, door) => votes.filter(v => v === door).length);
   const most = Math.max(...counts);
   const tied = counts.map((c, door) => c === most ? door : -1).filter(door => door >= 0);
   const winner = pick(tied);
   const cat = cats[winner];
-  timerEl.classList.add('done');
-  pads.forEach(pd => pd.destroy());
   S.players.forEach((p, i) => { if (votes[i] === null) Stage.mood(figId(p), 'idle'); });
   Remote.setAll(() => ({ k: 'wait', title: cat, text: 'Gleich kommt die Frage auf dem Fernseher.' }));
-  await wait(Stage.ok ? 900 : 300);   // die letzten Figuren kommen noch an
+  await wait(Stage.ok ? 500 : 300);
 
   // Keine klare Mehrheit: Der Zufallszeiger springt zwischen den Türen mit den meisten Stimmen
   // hin und her, wird langsamer und bleibt auf einer stehen. Ohne Stimmen sind alle Türen dabei.
