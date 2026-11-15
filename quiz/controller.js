@@ -180,8 +180,8 @@ function render(v) {
         <h2 class="ph-title">${esc(v.title)}</h2>
         <div class="ph-options">
           ${v.options.map((o, i) => `
-            <button class="ph-opt" data-i="${i}" ${o.color ? `style="--oc:${o.color}"` : ''}>
-              ${o.icon ? icon(o.icon, 'ph-ic') : ''}
+            <button class="ph-opt ${o.art ? 'has-art' : ''}" data-i="${i}" ${o.color ? `style="--oc:${o.color}"` : ''}>
+              ${o.art ? ItemArt.img(o.art, 'ph-art') : o.icon ? icon(o.icon, 'ph-ic') : ''}
               <span class="ph-opt-label">${esc(o.label)}</span>
               ${o.sub ? `<span class="ph-opt-sub">${esc(o.sub)}</span>` : ''}
             </button>`).join('')}

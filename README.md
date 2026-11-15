@@ -59,6 +59,10 @@ Sobald Figuren zu sehen sind (Lobby, Frage, Auflösung, Finale, Sieger), füllt 
 
 **Titelmusik:** Eine eigene Komposition, die `quiz/music.js` komplett im Browser erzeugt (WebAudio, keine Audiodateien): Bass, Akkorde auf dem Nachschlag, Melodie und Schlagzeug, 16 Takte in Schleife. Sie startet mit dem ersten Tippen (Browser erlauben vorher keinen Ton), läuft in Menü und Lobby und blendet beim Spielbeginn aus. Abschalten unter „Ton & Stimme“.
 
+**Items ab Runde 2:** In der ersten Runde gibt es keine Items. Danach zieht jede Person vor der Runde eins von drei zufällig ausgewählten Items (Frost, Nebel, Kreisel, Klecks, Zeitdieb, Spiegel, Schild). Die Karten zeigen nur Namen und ein gezeichnetes Icon.
+
+**Lebendige Figuren:** Jede Figur hat 18 Zeichnungen: zur Seite schauen, blinzeln, lächeln, winken, jubeln, lachen, staunen, grübeln, nervös zittern, wütend sein, traurig sein und zwei Laufbilder mit schwingenden Armen. Im Stehen wechseln sie von selbst zwischen kleinen Gesten; im Spiel reagieren sie auf das Geschehen.
+
 **Abstimmung über die Kategorie:** Vor jeder Frage stehen vier Türen mit vier Kategorien auf der Bühne. Jede Person stimmt ab (am Handy antippen oder mit den eigenen Tasten), ihre Figur stellt sich vor die gewählte Tür. Die Mehrheit gewinnt. Bei Gleichstand springt ein Zufallsstern mit Klickgeräusch zwischen den Türen mit den meisten Stimmen hin und her, wird langsamer und bleibt auf einer stehen (hat niemand abgestimmt, sind alle Türen dabei). Dann schwingt die Tür auf, alle Figuren laufen hindurch und die Frage erscheint. Die Abstimmzeit steht in `SETTINGS.voteTime`.
 
 **Handy im Querformat:** Die Frage steht nur auf dem Fernseher, das Handy zeigt die vier Antworten als große Knöpfe nebeneinander. Hält jemand das Handy hochkant, erscheint ein Hinweis zum Drehen; auf Android kann „Vollbild quer“ die Drehung auch festhalten.
