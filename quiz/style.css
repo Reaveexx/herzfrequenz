@@ -1002,3 +1002,5 @@ kbd {
 .ph-opt.has-art { align-items: center; text-align: center; padding: 10px 12px 12px; gap: 2px; }
 .ph-art { width: auto; height: clamp(70px, 34vh, 150px); filter: drop-shadow(3px 4px 0 rgba(27, 22, 48, .35)); }
 .ph-opt.has-art .ph-opt-label { font-size: clamp(1.3rem, 6vh, 2rem); }
+
+.net-status.is-stuck { color: #ffb3c1; font-weight: 700; }
