@@ -141,14 +141,20 @@ const ItemArt = (() => {
     }
   };
 
-  const cache = {};
-  function url(name) {
-    if (cache[name]) return cache[name];
-    if (!DRAW[name]) return '';
+  const cache = {}, canvases = {};
+  /* Zeichenfläche mit dem fertigen Icon, z. B. als Textur für die Bühne */
+  function canvas(name) {
+    if (canvases[name]) return canvases[name];
+    if (!DRAW[name]) return null;
     const [c, g] = mk();
     DRAW[name](g);
-    return (cache[name] = sticker(c).toDataURL('image/png'));
+    return (canvases[name] = sticker(c));
+  }
+  function url(name) {
+    if (cache[name]) return cache[name];
+    const c = canvas(name);
+    return c ? (cache[name] = c.toDataURL('image/png')) : '';
   }
   const img = (name, cls = '') => `<img class="item-art ${cls}" src="${url(name)}" alt="" draggable="false">`;
-  return { url, img, names: Object.keys(DRAW) };
+  return { url, img, canvas, names: Object.keys(DRAW) };
 })();

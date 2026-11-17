@@ -24,7 +24,7 @@ const Stage = (() => {
   const T = window.THREE;
   const noop = () => {};
   const done = () => Promise.resolve();
-  const fallback = { ok: false, mount: noop, setPlayers: noop, setInsets: noop, setDoors: noop, pointDoor: noop, dim: noop, titleKick: noop, voteWalk: done, openDoor: done, enterDoor: done, layout: done, setLabel: noop, setAnswers: noop, lock: noop, walkToPads: done, reveal: noop, pop: noop, climb: done, mood: noop };
+  const fallback = { ok: false, mount: noop, setPlayers: noop, setInsets: noop, setDoors: noop, pointDoor: noop, dim: noop, titleKick: noop, attack: done, voteWalk: done, openDoor: done, enterDoor: done, layout: done, setLabel: noop, setAnswers: noop, lock: noop, walkToPads: done, reveal: noop, pop: noop, climb: done, mood: noop };
   if (!T) return fallback;
 
   let renderer;
@@ -1075,7 +1075,11 @@ const Stage = (() => {
       laugh: { b: [null, null], f: [[104, ey + 112, 166, ey + 156], [316, ey + 112, 254, ey + 156]] },
       ohh: { b: [[52, ey + 24], [368, ey + 24]] },
       angry: { b: [[62, ey + 66], [358, ey + 66]] },
-      walk1: { b: [[66, ey + 80], [356, ey + 134]] }, walk2: { b: [[90, ey + 136], [330, ey + 78]] }
+      walk1: { b: [[66, ey + 80], [356, ey + 134]] }, walk2: { b: [[90, ey + 136], [330, ey + 78]] },
+      evil: { b: [null, null], f: [[110, ey + 118, 188, ey + 132], [310, ey + 118, 232, ey + 132]] },   // reibt sich die Hände
+      evil2: { b: [[54, ey + 6], [366, ey + 6]] },                                                       // lacht mit ausgebreiteten Armen
+      throw1: { b: [[34, ey - 74], [340, A]] },                                                          // holt aus
+      throw2: { b: [[80, A], [398, ey + 26]] }                                                           // wirft
     }[mood] || { b: rest };
     if (POSE.b[0]) arm(116, sy, POSE.b[0][0], POSE.b[0][1]);
     if (POSE.b[1]) arm(304, sy, POSE.b[1][0], POSE.b[1][1]);
@@ -1155,6 +1159,13 @@ const Stage = (() => {
     } else if (mood === 'ohh') {
       eyes(0, 0, 9); brow(-1, 0, 18); brow(1, 0, 18);
       g.beginPath(); g.ellipse(210, my + 8, 17, 23, 0, 0, 7); g.fillStyle = '#7a1f2b'; g.fill(); stroke(7);
+    } else if (mood === 'evil' || mood === 'throw1') {   // fieses Grinsen mit Zähnen
+      eyes(6, 5, 13); brow(-1, -13, -24); brow(1, -13, -24);
+      g.beginPath(); g.moveTo(170, my - 8); g.quadraticCurveTo(210, my + 40, 250, my - 8); g.quadraticCurveTo(210, my + 8, 170, my - 8); g.closePath();
+      g.fillStyle = '#fff'; g.fill(); stroke(6);
+      [-22, 0, 22].forEach(x => { g.beginPath(); g.moveTo(210 + x, my - 2 + Math.abs(x) * .1); g.lineTo(210 + x, my + 16 - Math.abs(x) * .3); stroke(3.5); });
+    } else if (mood === 'evil2' || mood === 'throw2') {   // böses Lachen
+      arcs(true); brow(-1, -13, -20); brow(1, -13, -20); openMouth(40, 34);
     } else if (mood === 'walk1' || mood === 'walk2') {
       eyes(9, 2); brow(-1, -2, 6); brow(1, 2, 6); openMouth(22, 15);
     } else { eyes(0, 3); grin(); }
@@ -1181,7 +1192,7 @@ const Stage = (() => {
     return sticker(c, 9);
   }
 
-  const LOOKS = ['idle', 'blink', 'lookL', 'lookR', 'smile', 'wave', 'wave2', 'cheer', 'cheer2', 'sad', 'think', 'think2', 'nervous', 'laugh', 'ohh', 'angry', 'walk1', 'walk2'];
+  const LOOKS = ['idle', 'blink', 'lookL', 'lookR', 'smile', 'wave', 'wave2', 'cheer', 'cheer2', 'sad', 'think', 'think2', 'nervous', 'laugh', 'ohh', 'angry', 'walk1', 'walk2', 'evil', 'evil2', 'throw1', 'throw2'];
   const figTex = new Map();
   function figureTex(style, color, mood) {
     const key = style + color + mood;
@@ -1246,7 +1257,7 @@ const Stage = (() => {
     const tag = document.createElement('div');
     tag.className = 'fig-tag';
     labels.append(label, tag);
-    return { id: p.id, style: index % 4, color: p.color, g, card, layers, frontM, shadow, label, tag, shown: '', pos: new T.Vector3(0, 9, 3), fresh: true, face: 1, faceGoal: 1, walk: null, gone: false, mood: 'idle', act: 'idle', actUntil: 0, hopT: -9, jumpT: -9, phase: Math.random() * 6, blinkAt: now() + 1 + Math.random() * 3, pops: [] };
+    return { id: p.id, style: index % 4, color: p.color, g, card, layers, frontM, shadow, label, tag, shown: '', pos: new T.Vector3(0, 9, 3), fresh: true, face: 1, faceGoal: 1, walk: null, gone: false, faceHold: 0, pose: '', poseUntil: 0, badges: 0, mood: 'idle', act: 'idle', actUntil: 0, hopT: -9, jumpT: -9, phase: Math.random() * 6, blinkAt: now() + 1 + Math.random() * 3, pops: [] };
   }
 
   function setPlayers(list) {
@@ -1294,6 +1305,7 @@ const Stage = (() => {
     title: { look: [0, 4.4, -1.5], elev: 9, pts: [] },
     lobby: { look: [0, 1.1, 0.6], elev: 9, pts: [[-4.8, -0.55, 0.6], [4.8, -0.55, 0.6], [-4.8, 3, 0.6], [4.8, 3, 0.6]] },
     climb: { look: [0, 2.4, 0], elev: 11, pts: [[-8.1, -0.45, 1.05], [8.4, -0.45, 1.05], [-8.1, 2.7, -0.2], [8.6, 6.4, -1.2]] },
+    duel: { look: [0, 1.7, 0.6], elev: 9, pts: [[-6, -0.5, 1.4], [6, -0.5, 1.4], [-6, 4.4, 1.4], [6, 4.4, 1.4]] },
     podium: { look: [0, 1.6, 0], elev: 8, pts: [[-6.1, -0.5, 0.9], [6.1, -0.5, 0.9], [0, 4.6, 0], [-4, 3.6, 0], [4, 3.6, 0]] }
   };
   let shot = 'question', snapUntil = 0;
@@ -1388,6 +1400,8 @@ const Stage = (() => {
   function layout(m, opts = {}) {
     mode = m; shot = m;
     lightGoal = 1;
+    clearTossed();
+    figs.forEach(f => { f.faceHold = 0; f.poseUntil = 0; f.badges = 0; });
     if (opts.summit) buildStairs(opts.summit);
     else if (m === 'climb' && !STEPS) buildStairs(lastSummit);
     padGroup.visible = m === 'question';
@@ -1413,6 +1427,7 @@ const Stage = (() => {
       let x = 0, y = 0, z = 0;
       if (f.gone) { f.gone = false; f.fresh = true; }   // war durch eine Tür gegangen: plumpst wieder herein
       if (m === 'question' || m === 'doors') { x = (i - (n - 1) / 2) * 2.7; z = 2.2; }
+      else if (m === 'duel') { x = (i - (n - 1) / 2) * 2.7; z = 1.4; }
       else if (m === 'lobby') { x = (i - (n - 1) / 2) * 2.4; z = 0.6; }
       else if (m === 'title') {
         x = (i - (n - 1) / 2) * 2.7; z = 1.6;
@@ -1497,6 +1512,103 @@ const Stage = (() => {
     }))).then(() => { d.openGoal = 0; });
   }
 
+  /* ---------- Wurf-Szene: eine Figur wirft einer anderen ein Item an den Kopf ---------- */
+  const sleep = ms => new Promise(r => setTimeout(r, calm ? Math.min(ms, 60) : ms));
+  const tossed = [];    // Items und Schilde, die gerade auf der Bühne sind
+  const flights = [];   // laufende Flugbahnen
+  const itemTex = {};
+  function itemMesh(name, size) {
+    if (!itemTex[name]) itemTex[name] = tex(ItemArt.canvas(name));
+    const m = new T.Mesh(new T.PlaneGeometry(size, size), cutMat(itemTex[name]));
+    scene.add(m);
+    tossed.push(m);
+    return m;
+  }
+  function clearTossed() {
+    tossed.splice(0).forEach(m => { if (m.parent) m.parent.remove(m); });
+    flights.length = 0;
+    zack.visible = false;
+  }
+  /* Bewegt ein Papierstück im Bogen von A nach B. */
+  function fly(m, { from, to, arc = 0, dur = 0.5, spin = 0, s0 = 1, s1 = 1 }) {
+    return new Promise(resolve => {
+      if (calm) { m.position.set(to[0], to[1], to[2]); m.scale.setScalar(s1); return resolve(); }
+      flights.push({ m, from, to, arc, dur, spin, s0, s1, t0: now(), resolve });
+    });
+  }
+  // "ZACK!"-Stern beim Treffer
+  const zack = (() => {
+    const [c, g] = mk(520, 420), r = rnd(23);
+    g.beginPath();
+    for (let i = 0; i < 24; i++) { const rad = (i % 2 ? 130 : 200) + (r() - .5) * 26, a = i / 24 * Math.PI * 2; g.lineTo(260 + Math.cos(a) * rad * 1.22, 210 + Math.sin(a) * rad); }
+    g.closePath(); g.fillStyle = SUN; g.fill();
+    g.save(); g.clip(); halftone(g, 0, 0, 520, 420, 17, '#f59f2a', (x, y) => Math.hypot(x - 260, y - 210) / 230 - .45); g.restore();
+    ink(g, 10);
+    g.save(); g.translate(260, 214); g.rotate(-.1); fitText(g, 'ZACK!', 0, 0, 330, 170, 150, RED, INK); g.restore();
+    const m = new T.Mesh(new T.PlaneGeometry(3.4, 2.75), cutMat(tex(sticker(c, 8))));
+    m.visible = false;
+    scene.add(m);
+    return m;
+  })();
+  let zackT = -9;
+
+  /*
+    Ablauf: Angreifer und Opfer treffen sich in der Mitte, die anderen treten zurück.
+    Der Angreifer lacht fies, holt aus und wirft. Treffer: ZACK, das Item bleibt über dem
+    Kopf des Opfers hängen. Mit Schild: Das Item prallt ab, das Opfer lacht.
+    onHit() wird im Moment des Aufpralls aufgerufen (für den Ton).
+  */
+  async function attack({ from, to, item, blocked, onHit }) {
+    const a = figs.get(from), v = figs.get(to);
+    if (!a || !v) return;
+    shot = 'duel'; aimCamera();
+    const Z = 1.4;
+    const others = [...figs.values()].filter(f => f !== a && f !== v && !f.gone).sort((p, q) => p.order - q.order);
+    others.forEach((f, i) => { f.mood = 'idle'; f.faceHold = 0; walkTo(f, (i - (others.length - 1) / 2) * 3 + (i % 2 ? .4 : -.4), 0, -2.4); });
+    a.faceHold = 1; v.faceHold = -1;
+    a.mood = 'evil'; v.mood = 'nervous';
+    await Promise.all([walkTo(a, -2.9, 0, Z), walkTo(v, 2.9, 0, Z)]);
+    await sleep(1000);                                   // böses Lachen
+    // ausholen
+    a.pose = 'throw1'; a.poseUntil = now() + 0.42;
+    const m = itemMesh(item, 1.3);
+    const hand = [a.pos.x - 0.8, 2.25, Z + 0.06];
+    m.position.set(hand[0], hand[1], hand[2]);
+    await sleep(400);
+    // werfen
+    a.pose = 'throw2'; a.poseUntil = now() + 0.55;
+    let shield = null;
+    if (blocked) {
+      shield = itemMesh('schild', 0.1);
+      shield.position.set(v.pos.x - 0.95, 1.25, Z + 0.1);
+      fly(shield, { from: [v.pos.x - 0.6, 1.1, Z + 0.1], to: [v.pos.x - 0.95, 1.25, Z + 0.1], dur: 0.22, s0: 1, s1: 17 });
+      v.mood = 'smile';
+    }
+    const hit = blocked ? [v.pos.x - 1.25, 1.35, Z + 0.14] : [v.pos.x - 0.1, 1.5, Z + 0.08];
+    await fly(m, { from: hand, to: hit, arc: 1.5, dur: 0.5, spin: 7 });
+    if (onHit) onHit();
+    zack.position.set(hit[0], hit[1] + 0.2, Z + 0.2);
+    zack.visible = !blocked; zackT = now();
+    if (blocked) {
+      v.mood = 'laugh'; a.mood = 'ohh';
+      await fly(m, { from: hit, to: [a.pos.x + 1.2, -0.6, Z + 1.2], arc: 2.6, dur: 0.7, spin: -9, s0: 1, s1: 0.7 });
+      m.visible = false;
+    } else {
+      v.mood = 'ohh'; v.hopT = now(); a.mood = 'laugh';
+      await sleep(260);
+      // das Item bleibt als Anhänger über dem Kopf des Opfers
+      const slot = (v.badges++ - 0) * 0.62;
+      await fly(m, { from: hit, to: [v.pos.x - 0.3 + slot, 3.15, Z], arc: 0.5, dur: 0.32, spin: 6.283, s0: 1, s1: 0.58 });
+      v.g.add(m);
+      m.position.set(-0.3 + slot, 3.15, 0.04); m.rotation.z = 0;
+      v.mood = 'angry';
+    }
+    await sleep(900);
+    zack.visible = false;
+    if (shield) { shield.visible = false; }
+    a.mood = 'idle';
+  }
+
   function lock(id) { const f = figs.get(id); if (f) f.jumpT = now(); }
   /* Titelbild: Logo macht einen Satz, alle Figuren springen nacheinander. */
   function titleKick() {
@@ -1575,7 +1687,7 @@ const Stage = (() => {
     let hop = 0, turn = 1, tilt = Math.sin(t * 1.7 + f.phase) * 0.035 * wob, look = f.mood, ground = f.pos.y;
     if (f.walk) {
       const w = f.walk, k = (t - w.t0) / w.dur;
-      if (k >= 1) { f.pos.copy(w.to); f.walk = null; f.faceGoal = 1; w.resolve(); }
+      if (k >= 1) { f.pos.copy(w.to); f.walk = null; f.faceGoal = f.faceHold || 1; w.resolve(); }
       else {
         const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
         f.pos.lerpVectors(w.from, w.to, e);
@@ -1617,6 +1729,9 @@ const Stage = (() => {
       else if (f.mood === 'cheer') look = Math.floor(ph * 4.2) % 2 ? 'cheer2' : 'cheer';
       else if (f.mood === 'think') look = Math.floor(ph * 0.42) % 2 ? 'think2' : 'think';
       else if (f.mood === 'laugh') look = Math.floor(ph * 5) % 2 ? 'laugh' : 'smile';
+      else if (f.mood === 'evil') { look = Math.floor(ph * 5.5) % 2 ? 'evil2' : 'evil'; hop += Math.abs(Math.sin((t + f.phase) * 11)) * 0.1 * wob; tilt = Math.sin(t * 5.5 + f.phase) * 0.05 * wob; }
+      if (t < f.poseUntil) look = f.pose;   // kurze feste Pose, z. B. Ausholen und Werfen
+      if (f.faceHold) f.faceGoal = f.faceHold;
     }
     if (hop > 0) { sy += hop * 0.14; sx -= hop * 0.07; }
     if (f.shown !== look) {
@@ -1747,6 +1862,14 @@ const Stage = (() => {
         c.m.rotation.set(t * c.s, t * c.s * 0.7 + c.ph, c.ph);
       });
     }
+    for (let i = flights.length - 1; i >= 0; i--) {
+      const q = flights[i], k = Math.min(1, (t - q.t0) / q.dur);
+      q.m.position.set(q.from[0] + (q.to[0] - q.from[0]) * k, q.from[1] + (q.to[1] - q.from[1]) * k + Math.sin(k * Math.PI) * q.arc, q.from[2] + (q.to[2] - q.from[2]) * k);
+      q.m.rotation.z = q.spin * k;
+      q.m.scale.setScalar(q.s0 + (q.s1 - q.s0) * k);
+      if (k >= 1) { flights.splice(i, 1); q.resolve(); }
+    }
+    if (zack.visible) { const zk = Math.min(1, (t - zackT) / 0.16); zack.scale.setScalar(0.4 + zk * 0.6 + Math.sin(zk * Math.PI) * 0.25); zack.rotation.z = Math.sin(t * 30) * 0.03; }
     figs.forEach(f => updateFig(f, t, dt));
     light += (lightGoal - light) * Math.min(1, dt * 3.2);
     if (Math.abs(light - lightGoal) < 0.004 || calm) light = lightGoal;
@@ -1769,5 +1892,5 @@ const Stage = (() => {
     }).catch(noop);
   }
 
-  return { ok: true, mount, setPlayers, setInsets, setDoors, pointDoor, dim, titleKick, voteWalk, openDoor, enterDoor, layout, setLabel, setAnswers, lock, walkToPads, reveal, pop, climb, mood };
+  return { ok: true, mount, setPlayers, setInsets, setDoors, pointDoor, dim, titleKick, attack, voteWalk, openDoor, enterDoor, layout, setLabel, setAnswers, lock, walkToPads, reveal, pop, climb, mood };
 })();
