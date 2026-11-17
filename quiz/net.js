@@ -44,14 +44,21 @@ const Net = (() => {
   function direct(hostId, onMessage, onStatus, role) {
     const none = { send() {}, close() {} };
     if (!window.Peer) { setTimeout(() => onStatus('error'), 0); return none; }
+    // STUN findet den Weg durch normale Router. Blockiert das Netz direkte Verbindungen
+    // (Uni-WLAN, Handy im Mobilfunk), läuft es über einen TURN-Relay-Server.
+    // Eigener TURN-Server: in config.js turn: { urls: [...], username: '…', credential: '…' } eintragen.
+    const turn = cfg().turn ? [cfg().turn] : [{
+      urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'],
+      username: 'openrelayproject', credential: 'openrelayproject'
+    }];
     const opts = Object.assign({
       debug: 0,
-      config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }] }
+      config: { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:global.stun.twilio.com:3478'] }].concat(turn) }
     }, window.KOPFNUSS_PEER || {});   // KOPFNUSS_PEER: eigener PeerJS-Server, z. B. zum Testen
-    let peer = null, closed = false, retryTimer = 0, openTimer = 0, failures = 0;
+    let peer = null, closed = false, retryTimer = 0, openTimer = 0, stuckTimer = 0, failures = 0, last = '';
     const conns = new Set();
     let hostConn = null;
-    const status = s => { if (!closed) onStatus(s); };
+    const status = s => { if (!closed) { last = s; onStatus(s); } };
 
     function retry(ms) {
       clearTimeout(retryTimer);
@@ -74,7 +81,8 @@ const Net = (() => {
       });
       peer.on('connection', c => {
         if (role !== 'host') return c.close();
-        c.on('open', () => conns.add(c));
+        const stuck = setTimeout(() => { if (!c.open && !closed) status('stuck'); }, 12000);
+        c.on('open', () => { clearTimeout(stuck); conns.add(c); if (last === 'stuck') status('open'); });
         c.on('data', d => onMessage(d));
         const drop = () => conns.delete(c);
         c.on('close', drop); c.on('error', drop);
@@ -103,10 +111,12 @@ const Net = (() => {
         if (hostConn !== c || closed) return;
         hostConn = null;
         failures++;
-        status('reconnecting');
+        if (last !== 'blocked') status('reconnecting');   // Hinweis "blockiert" stehen lassen, bis es klappt
         retry(1500);
       };
-      c.on('open', () => { failures = 0; status('open'); });
+      clearTimeout(stuckTimer);
+      stuckTimer = setTimeout(() => { if (!c.open && !closed) status('blocked'); }, 12000);
+      c.on('open', () => { clearTimeout(stuckTimer); failures = 0; status('open'); });
       c.on('data', d => onMessage(d));
       c.on('close', lost);
       c.on('error', lost);
@@ -120,7 +130,7 @@ const Net = (() => {
       },
       /* Handy kommt aus dem Standby zurück: ist die Verbindung weg, sofort neu aufbauen */
       wake() { if (!closed && role !== 'host' && !(hostConn && hostConn.open)) { failures = 0; open(); } },
-      close() { closed = true; clearTimeout(retryTimer); clearTimeout(openTimer); try { peer && peer.destroy(); } catch { /* egal */ } }
+      close() { closed = true; clearTimeout(retryTimer); clearTimeout(openTimer); clearTimeout(stuckTimer); try { peer && peer.destroy(); } catch { /* egal */ } }
     };
   }
 

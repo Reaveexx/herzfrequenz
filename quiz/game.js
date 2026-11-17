@@ -1393,7 +1393,8 @@ function lobbyScreen() {
     connecting: 'Verbinde mit dem Server …',
     open: Net.forceLocal ? 'Testmodus: Öffne den Link links in einem zweiten Tab dieses Browsers.' : Net.mode === 'direkt' ? 'Bereit! Scannt den Code mit der Handy-Kamera. Am besten sind alle im selben WLAN.' : 'Verbunden. Scannt den Code mit der Handy-Kamera.',
     reconnecting: 'Verbindung unterbrochen. Verbinde neu …',
-    error: Net.mode === 'direkt' ? 'Der Vermittlungsdienst ist gerade nicht erreichbar. Prüfe die Internetverbindung, ich versuche es weiter.' : 'Keine Verbindung zum Server. Prüfe im Supabase-Dashboard, ob dein Projekt aktiv ist. In einer Vorschau ohne Internetzugang funktioniert der Handy-Modus nicht.'
+    error: Net.mode === 'direkt' ? 'Der Vermittlungsdienst ist gerade nicht erreichbar. Prüfe die Internetverbindung, ich versuche es weiter.' : 'Keine Verbindung zum Server. Prüfe im Supabase-Dashboard, ob dein Projekt aktiv ist. In einer Vorschau ohne Internetzugang funktioniert der Handy-Modus nicht.',
+    stuck: 'Ein Handy kommt nicht durch: Das Netz hier blockiert die direkte Verbindung. Tipp: Mach am Handy einen Hotspot an und verbinde dieses Gerät damit.'
   };
   const render = () => {
     const net = $('#net'); if (!net) return;

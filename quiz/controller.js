@@ -81,6 +81,7 @@ function start() {
     netStatus = s;
     const dot = $('.ph-dot', phone); if (dot) dot.className = 'ph-dot is-' + s;
     if (s === 'open') sendJoin();
+    if (s === 'blocked' && !me) info('Verbindung blockiert', 'Das Netz hier lässt Handy und Bildschirm nicht direkt miteinander reden. Tipp: Mach am Handy einen Hotspot an und verbinde den großen Bildschirm damit. Ich versuche es weiter.');
     if (s === 'notfound' && !me) info('Raum nicht gefunden', `Auf dem großen Bildschirm ist gerade kein Raum ${room} offen. Prüfe den Code; ich versuche es weiter.`);
     if (s === 'error' && !me) info('Keine Verbindung', Net.mode === 'direkt' ? 'Das Handy erreicht den Vermittlungsdienst nicht. Prüfe das Internet; ich versuche es weiter.' : 'Das Handy erreicht den Server nicht. Prüfe das Internet und versuche es nochmal.');
   }, 'client');
